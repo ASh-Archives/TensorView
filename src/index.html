@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Как компьютер видит изображение</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #030712; color: white; font-family: monospace; }
+  .btn { cursor: pointer; border: none; color: white; font-family: monospace; }
+  .btn:disabled { opacity: 0.3; cursor: default; }
+
+  @keyframes slideIn {
+    from { opacity:0; transform:translateY(10px); }
+    to   { opacity:1; transform:translateY(0); }
+  }
+  @keyframes channelFloat {
+    0%,100% { transform: translateY(0px); }
+    50%      { transform: translateY(-6px); }
+  }
+  @keyframes gpuPulse {
+    0%,100% { opacity:0.4; }
+    50%      { opacity:1; }
+  }
+  @keyframes flow {
+    from { stroke-dashoffset: 40; }
+    to   { stroke-dashoffset: 0; }
+  }
+  .anim-in  { animation: slideIn 0.35s ease both; }
+  .ch-float { animation: channelFloat 2.5s ease-in-out infinite; }
+  .gpu-pulse { animation: gpuPulse 1.2s ease-in-out infinite; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+const STEPS = [
+  { id:"real",      title:"📷 Реальное фото",                   desc:"Ты видишь обычную фотографию. Для компьютера это просто числа." },
+  { id:"grid",      title:"🔲 Фото — это сетка пикселей",       desc:"Каждый пиксель — маленький квадратик. Фото 4×4 = 16 пикселей." },
+  { id:"pixel",     title:"🎨 Каждый пиксель = 3 числа",        desc:"R = красный, G = зелёный, B = синий. Числа от 0 до 255." },
+  { id:"array",     title:"🔢 Пиксели → массив numpy",          desc:"image[строка][столбец] = [R, G, B]. image[0,0] — левый верхний угол." },
+  { id:"shape",     title:"📐 image.shape = (H, W, 3)",         desc:"3 — это три канала RGB. Вот почему image[0,0] даёт массив из 3 чисел." },
+  { id:"transpose", title:"🔄 NumPy (H,W,3) → PyTorch (3,H,W)", desc:"PyTorch ожидает сначала каналы, потом пространство. Нужно переставить оси." },
+  { id:"split",     title:"✂️ Разрезаем пиксели на каналы",     desc:"Каждый пиксель [R,G,B] распаковывается: третья ось разлетается в три слоя." },
+  { id:"channels",  title:"🟥🟩🟦 Три матрицы каналов",         desc:"R-матрица, G-матрица, B-матрица — каждая содержит только одно значение на пиксель." },
+  { id:"gpu",       title:"⚡ Почему GPU важно",                 desc:"CPU обрабатывает пиксели по одному. GPU — все 1 228 800 чисел одновременно." },
+];
+
+const GRID = [
+  ["#FF0000","#00FF00","#0000FF","#FFFF00"],
+  ["#FF00FF","#00FFFF","#FFFFFF","#000000"],
+  ["#FF8800","#8800FF","#00FF88","#FF0088"],
+  ["#88FF00","#0088FF","#FF8888","#88FF88"],
+];
+
+const hexToRgb = h => [
+  parseInt(h.slice(1,3),16),
+  parseInt(h.slice(3,5),16),
+  parseInt(h.slice(5,7),16)
+];
+
+/* ── tiny pixel matrix component ── */
+const MiniGrid = ({highlight}) => (
+  <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"3px"}}>
+    {GRID.map((row,ri)=>row.map((c,ci)=>(
+      <div key={`${ri}-${ci}`}
+        style={{width:"22px",height:"22px",borderRadius:"4px",background:c,
+          border: highlight?"2px solid #ffffff44":"1px solid #ffffff22"}}/>
+    )))}
+  </div>
+);
+
+/* ── channel matrix: single-color grid ── */
+const ChannelMatrix = ({label, color, values, delay=0}) => (
+  <div className="anim-in ch-float"
+    style={{animationDelay:`${delay}s`,display:"flex",flexDirection:"column",alignItems:"center",gap:"6px"}}>
+    <div style={{fontSize:"11px",fontWeight:"bold",color}}>[ {label} ]</div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"2px",
+      border:`2px solid ${color}44`,padding:"4px",borderRadius:"8px",background:color+"11"}}>
+      {values.map((v,i)=>(
+        <div key={i} style={{width:"26px",height:"26px",borderRadius:"4px",
+          background:color, opacity: v/255,
+          display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <span style={{fontSize:"7px",color:"white",fontWeight:"bold",
+            textShadow:"0 0 3px #000"}}>{v}</span>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+function App() {
+  const [step, setStep] = React.useState(0);
+  const [sel, setSel]   = React.useState([0,0]);
+  const [busy, setBusy] = React.useState(false);
+  const [hov, setHov]   = React.useState(null);
+  const [transPhase, setTransPhase] = React.useState(0); // 0=numpy 1=arrow 2=torch
+  const [splitPhase, setSplitPhase] = React.useState(0);
+  const [gpuTick, setGpuTick]       = React.useState(0);
+
+  const [row,col] = sel;
+  const color = GRID[row][col];
+  const [r,g,b] = hexToRgb(color);
+
+  // Flatten all channels for display
+  const rValues = GRID.flat().map(h=>hexToRgb(h)[0]);
+  const gValues = GRID.flat().map(h=>hexToRgb(h)[1]);
+  const bValues = GRID.flat().map(h=>hexToRgb(h)[2]);
+
+  React.useEffect(()=>{
+    if(step===5){
+      setTransPhase(0);
+      const t1=setTimeout(()=>setTransPhase(1),600);
+      const t2=setTimeout(()=>setTransPhase(2),1400);
+      return ()=>{ clearTimeout(t1); clearTimeout(t2); };
+    }
+    if(step===6){ setSplitPhase(0); const t=setTimeout(()=>setSplitPhase(1),700); return ()=>clearTimeout(t); }
+    if(step===8){
+      const id=setInterval(()=>setGpuTick(t=>t+1),120);
+      return ()=>clearInterval(id);
+    }
+  },[step]);
+
+  const autoPlay = async () => {
+    setBusy(true);
+    for(let i=0;i<STEPS.length;i++){
+      setStep(i);
+      await new Promise(res=>setTimeout(res,2200));
+    }
+    setBusy(false);
+  };
+
+  const s = { padding:"4px 12px", borderRadius:"8px", fontSize:"13px" };
+
+  return (
+    <div style={{minHeight:"100vh",background:"#030712",color:"white",padding:"16px",fontFamily:"monospace"}}>
+      <h1 style={{textAlign:"center",color:"#a78bfa",fontSize:"18px",marginBottom:"4px"}}>
+        Как компьютер видит изображение
+      </h1>
+      <p style={{textAlign:"center",color:"#9ca3af",fontSize:"13px",marginBottom:"12px"}}>
+        image[0, 0] → [255, 0, 0]
+      </p>
+
+      {/* Step dots */}
+      <div style={{display:"flex",justifyContent:"center",gap:"6px",marginBottom:"18px",flexWrap:"wrap"}}>
+        {STEPS.map((_,i)=>(
+          <button key={i} className="btn" onClick={()=>setStep(i)}
+            style={{width:"30px",height:"30px",borderRadius:"50%",fontSize:"11px",fontWeight:"bold",
+              background: i===step?"#8b5cf6": i<step?"#4c1d95":"#374151",
+              color:"white", transform: i===step?"scale(1.15)":"scale(1)",
+              transition:"all 0.2s"}}>
+            {i+1}
+          </button>
+        ))}
+      </div>
+
+      {/* Title */}
+      <div style={{textAlign:"center",marginBottom:"18px"}}>
+        <div style={{fontSize:"15px",fontWeight:"bold",color:"#fde047"}}>{STEPS[step].title}</div>
+        <div style={{color:"#d1d5db",fontSize:"12px",marginTop:"4px",maxWidth:"340px",margin:"4px auto 0"}}>{STEPS[step].desc}</div>
+      </div>
+
+      {/* Content */}
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"16px"}}>
+
+        {/* ── STEP 0 ── */}
+        {step===0 && (
+          <div className="anim-in" style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"12px"}}>
+            <div style={{width:"120px",height:"120px",borderRadius:"12px",border:"4px solid #8b5cf6",
+              background:"linear-gradient(135deg,#FF0000 0%,#00FF00 50%,#0000FF 100%)"}}/>
+            <div style={{color:"#9ca3af",fontSize:"13px"}}>← Для тебя: красивое фото</div>
+            <div style={{color:"#facc15",fontSize:"13px"}}>↓ Для компьютера: числа</div>
+          </div>
+        )}
+
+        {/* ── STEP 1 ── */}
+        {step===1 && (
+          <div className="anim-in" style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"12px"}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"4px",
+              border:"2px solid #8b5cf6",padding:"4px",borderRadius:"8px"}}>
+              {GRID.map((row2,ri)=>row2.map((c,ci)=>(
+                <button key={`${ri}-${ci}`} className="btn" onClick={()=>setSel([ri,ci])}
+                  style={{width:"44px",height:"44px",borderRadius:"6px",background:c,
+                    border: ri===row&&ci===col?"4px solid white":"1px solid #4b5563",
+                    transform: ri===row&&ci===col?"scale(1.1)":"scale(1)",
+                    transition:"all 0.15s"}}/>
+              )))}
+            </div>
+            <div style={{color:"#9ca3af",fontSize:"12px"}}>Нажми на пиксель</div>
+            <div style={{color:"#fde047",fontSize:"13px"}}>Выбран: [{row}, {col}]</div>
+          </div>
+        )}
+
+        {/* ── STEP 2 ── */}
+        {step===2 && (
+          <div className="anim-in" style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"16px"}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"4px",
+              border:"2px solid #8b5cf6",padding:"4px",borderRadius:"8px"}}>
+              {GRID.map((row2,ri)=>row2.map((c,ci)=>(
+                <button key={`${ri}-${ci}`} className="btn" onClick={()=>setSel([ri,ci])}
+                  style={{width:"36px",height:"36px",borderRadius:"6px",background:c,
+                    border: ri===row&&ci===col?"4px solid white":"1px solid #4b5563",
+                    transition:"all 0.15s"}}/>
+              )))}
+            </div>
+            <div style={{display:"flex",gap:"12px",alignItems:"center"}}>
+              <div style={{width:"56px",height:"56px",borderRadius:"8px",border:"4px solid white",background:color}}/>
+              <div style={{color:"#9ca3af",fontSize:"20px"}}>=</div>
+              <div style={{display:"flex",gap:"8px"}}>
+                {[{l:"R",v:r,c:"#ef4444"},{l:"G",v:g,c:"#22c55e"},{l:"B",v:b,c:"#3b82f6"}].map(ch=>(
+                  <button key={ch.l} className="btn"
+                    onMouseEnter={()=>setHov(ch.l)} onMouseLeave={()=>setHov(null)}
+                    style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"8px",
+                      borderRadius:"8px",border:`2px solid ${ch.c}`,
+                      background: hov===ch.l ? ch.c+"33":"transparent",transition:"all 0.2s"}}>
+                    <span style={{fontSize:"11px",fontWeight:"bold",color:ch.c}}>{ch.l}</span>
+                    <span style={{fontSize:"18px",fontWeight:"bold",color:"white"}}>{ch.v}</span>
+                    <div style={{width:"28px",height:"6px",borderRadius:"3px",marginTop:"4px",
+                      background:ch.c, opacity: ch.v/255}}/>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={{color:"#86efac",fontSize:"14px"}}>[{r}, {g}, {b}]</div>
+          </div>
+        )}
+
+        {/* ── STEP 3 ── */}
+        {step===3 && (
+          <div className="anim-in" style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"16px"}}>
+            <div style={{fontSize:"12px",color:"#9ca3af"}}>Кликни на пиксель — увидишь индексы</div>
+            <div>
+              <div style={{display:"flex",marginLeft:"32px",marginBottom:"4px"}}>
+                {[0,1,2,3].map(ci=>(
+                  <div key={ci} style={{width:"40px",textAlign:"center",fontSize:"11px",color:"#60a5fa",fontWeight:"bold"}}>
+                    [{ci}]
+                  </div>
+                ))}
+              </div>
+              <div style={{display:"flex"}}>
+                <div style={{display:"flex",flexDirection:"column",marginRight:"4px"}}>
+                  {[0,1,2,3].map(ri=>(
+                    <div key={ri} style={{width:"28px",height:"40px",display:"flex",alignItems:"center",
+                      justifyContent:"flex-end",paddingRight:"4px",fontSize:"11px",color:"#4ade80",fontWeight:"bold"}}>
+                      [{ri}]
+                    </div>
+                  ))}
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"4px",
+                  border:"2px solid #8b5cf6",padding:"4px",borderRadius:"8px"}}>
+                  {GRID.map((row2,ri)=>row2.map((c,ci)=>(
+                    <button key={`${ri}-${ci}`} className="btn" onClick={()=>setSel([ri,ci])}
+                      style={{width:"40px",height:"40px",borderRadius:"6px",background:c,
+                        border: ri===row&&ci===col?"4px solid white":"1px solid #4b5563",
+                        transition:"all 0.15s"}}/>
+                  )))}
+                </div>
+              </div>
+            </div>
+            <div style={{background:"#1f2937",borderRadius:"8px",padding:"12px",
+              border:"1px solid #8b5cf6",fontSize:"14px"}}>
+              <span style={{color:"#93c5fd"}}>image</span>
+              <span style={{color:"#fde047"}}>[{row}, {col}]</span>
+              <span style={{color:"#9ca3af"}}> = </span>
+              <span style={{color:"#86efac"}}>[{r}, {g}, {b}]</span>
+            </div>
+          </div>
+        )}
+
+        {/* ── STEP 4 ── */}
+        {step===4 && (
+          <div className="anim-in" style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"16px"}}>
+            <div style={{background:"#1f2937",borderRadius:"10px",padding:"16px",
+              border:"1px solid #8b5cf6",fontSize:"13px"}}>
+              <div style={{color:"#fde047",fontWeight:"bold",marginBottom:"12px"}}>
+                image.shape = (4, 4, 3)
+              </div>
+              <div style={{display:"flex",gap:"20px",alignItems:"center",justifyContent:"center"}}>
+                {[{v:"4",c:"#4ade80",l:"высота",s:"строки"},
+                  {v:"×",c:"#6b7280",l:"",s:""},
+                  {v:"4",c:"#60a5fa",l:"ширина",s:"столбцы"},
+                  {v:"×",c:"#6b7280",l:"",s:""},
+                  {v:"3",c:"#f87171",l:"каналы",s:"R, G, B"}].map((x,i)=>(
+                  x.v==="×"
+                    ? <div key={i} style={{color:x.c,fontSize:"20px"}}>×</div>
+                    : <div key={i} style={{display:"flex",flexDirection:"column",alignItems:"center"}}>
+                        <div style={{color:x.c,fontSize:"20px",fontWeight:"bold"}}>{x.v}</div>
+                        <div style={{color:"#9ca3af",fontSize:"11px"}}>{x.l}</div>
+                        <div style={{color:"#6b7280",fontSize:"10px"}}>{x.s}</div>
+                      </div>
+                ))}
+              </div>
+            </div>
+            <div style={{display:"flex",gap:"10px"}}>
+              {[{l:"R канал",c:"#ef4444"},{l:"G канал",c:"#22c55e"},{l:"B канал",c:"#3b82f6"}].map(ch=>(
+                <div key={ch.l} style={{display:"flex",flexDirection:"column",alignItems:"center",
+                  padding:"8px",borderRadius:"8px",border:`1px solid ${ch.c}`,fontSize:"11px"}}>
+                  <div style={{width:"36px",height:"36px",borderRadius:"6px",marginBottom:"4px",
+                    display:"grid",gridTemplateColumns:"1fr 1fr",gap:"2px",padding:"3px",
+                    background:ch.c+"22"}}>
+                    {[0,1,2,3].map(i=>(
+                      <div key={i} style={{borderRadius:"2px",background:ch.c}}/>
+                    ))}
+                  </div>
+                  <span style={{color:ch.c}}>{ch.l}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{background:"#1f2937",borderRadius:"8px",padding:"12px",
+              border:"1px solid #4b5563",fontSize:"12px",maxWidth:"280px",textAlign:"center"}}>
+              <div style={{color:"#d1d5db"}}>
+                Фото 640×640 =&nbsp;
+                <span style={{color:"#fde047"}}>(640, 640, 3)</span>
+                &nbsp;= <span style={{color:"#86efac"}}>1 228 800 чисел</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── STEP 5: NumPy → PyTorch transpose ── */}
+        {step===5 && (
+          <div className="anim-in" style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"20px"}}>
+
+            {/* Visual axis diagram */}
+            <div style={{display:"flex",alignItems:"center",gap:"16px",flexWrap:"wrap",justifyContent:"center"}}>
+
+              {/* NumPy cube */}
+              <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"8px",
+                opacity: transPhase>=0?1:0, transition:"opacity 0.5s"}}>
+                <div style={{fontSize:"11px",color:"#9ca3af",marginBottom:"2px"}}>NumPy</div>
+                <div style={{position:"relative",width:"80px",height:"80px"}}>
+                  {/* Стопка слоёв H×W */}
+                  {[2,1,0].map(i=>(
+                    <div key={i} style={{position:"absolute",
+                      top:`${i*6}px`, left:`${i*6}px`,
+                      width:"64px",height:"64px",borderRadius:"6px",
+                      background: i===0?"#1d4ed8":i===1?"#1e40af":"#1e3a8a",
+                      border:"2px solid #3b82f6",
+                      display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      {i===0 && <span style={{fontSize:"9px",color:"#93c5fd"}}>[:,:,2] B</span>}
+                      {i===1 && <span style={{fontSize:"9px",color:"#86efac"}}>[:,:,1] G</span>}
+                      {i===2 && <span style={{fontSize:"9px",color:"#fca5a5"}}>[:,:,0] R</span>}
+                    </div>
+                  ))}
+                </div>
+                <div style={{fontSize:"12px",color:"#fde047",fontWeight:"bold"}}>(H, W, 3)</div>
+                <div style={{fontSize:"10px",color:"#6b7280"}}>канал — последний</div>
+              </div>
+
+              {/* Arrow + code */}
+              <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"6px",
+                opacity: transPhase>=1?1:0, transition:"opacity 0.5s",transitionDelay:"0.1s"}}>
+                <div style={{background:"#1f2937",borderRadius:"8px",padding:"8px 12px",
+                  border:"1px solid #8b5cf6",fontSize:"11px",textAlign:"center",lineHeight:"1.7"}}>
+                  <span style={{color:"#c084fc"}}>np.transpose</span>
+                  <span style={{color:"#9ca3af"}}>(image,</span>
+                  <br/>
+                  <span style={{color:"#fde047"}}>(2, 0, 1)</span>
+                  <span style={{color:"#9ca3af"}}>)</span>
+                  <br/>
+                  <span style={{color:"#6b7280",fontSize:"10px"}}>или</span>
+                  <br/>
+                  <span style={{color:"#c084fc"}}>tensor.permute</span>
+                  <span style={{color:"#fde047"}}>(2, 0, 1)</span>
+                </div>
+                <div style={{color:"#8b5cf6",fontSize:"22px"}}>→</div>
+              </div>
+
+              {/* PyTorch cube */}
+              <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"8px",
+                opacity: transPhase>=2?1:0, transition:"opacity 0.5s",transitionDelay:"0.2s"}}>
+                <div style={{fontSize:"11px",color:"#9ca3af",marginBottom:"2px"}}>PyTorch</div>
+                <div style={{position:"relative",width:"80px",height:"80px"}}>
+                  {/* Стопка слоёв C — вертикально */}
+                  {[{c:"#ef4444",l:"[0,:,:] R"},{c:"#22c55e",l:"[1,:,:] G"},{c:"#3b82f6",l:"[2,:,:] B"}].map((ch,i)=>(
+                    <div key={i} style={{position:"absolute",
+                      top:`${i*20}px`, left:"8px",
+                      width:"64px",height:"18px",borderRadius:"4px",
+                      background:ch.c+"33",
+                      border:`2px solid ${ch.c}`,
+                      display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      <span style={{fontSize:"9px",color:ch.c,fontWeight:"bold"}}>{ch.l}</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{fontSize:"12px",color:"#fde047",fontWeight:"bold"}}>(3, H, W)</div>
+                <div style={{fontSize:"10px",color:"#6b7280"}}>канал — первый</div>
+              </div>
+            </div>
+
+            {/* Axis labels */}
+            <div style={{background:"#111827",borderRadius:"10px",padding:"12px",
+              border:"1px solid #374151",fontSize:"12px",maxWidth:"320px",width:"100%"}}>
+              <div style={{color:"#9ca3af",marginBottom:"8px",fontSize:"11px"}}>Что делает (2, 0, 1):</div>
+              {[
+                {from:"ось 0 → H (высота)",  to:"ось 0 → C (каналы)", arrow:"2 ставим на место 0"},
+                {from:"ось 1 → W (ширина)",  to:"ось 1 → H (высота)", arrow:"0 ставим на место 1"},
+                {from:"ось 2 → C (каналы)",  to:"ось 2 → W (ширина)", arrow:"1 ставим на место 2"},
+              ].map((x,i)=>(
+                <div key={i} style={{display:"flex",alignItems:"center",gap:"6px",marginBottom:"4px"}}>
+                  <span style={{color:"#60a5fa",fontSize:"10px",width:"100px"}}>{x.from}</span>
+                  <span style={{color:"#8b5cf6"}}>→</span>
+                  <span style={{color:"#86efac",fontSize:"10px"}}>{x.arrow}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── STEP 6: Разрезаем пиксели ── */}
+        {step===6 && (
+          <div className="anim-in" style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"20px"}}>
+
+            {/* Source grid with label */}
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"6px"}}>
+              <div style={{fontSize:"11px",color:"#9ca3af"}}>Исходный массив (H, W, 3)</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"3px",
+                border:"2px solid #8b5cf6",padding:"5px",borderRadius:"8px"}}>
+                {GRID.map((row2,ri)=>row2.map((c,ci)=>{
+                  const [rv,gv,bv]=hexToRgb(c);
+                  return (
+                    <div key={`${ri}-${ci}`}
+                      style={{width:"38px",height:"38px",borderRadius:"5px",background:c,
+                        border:"1px solid #ffffff22",
+                        display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      <span style={{fontSize:"6px",color:"white",textShadow:"0 0 3px #000",lineHeight:"1.2",textAlign:"center"}}>
+                        {rv}<br/>{gv}<br/>{bv}
+                      </span>
+                    </div>
+                  );
+                }))}
+              </div>
+            </div>
+
+            {/* Animated split arrows */}
+            <div style={{display:"flex",gap:"40px",alignItems:"flex-start",position:"relative"}}>
+              {[{l:"R",c:"#ef4444",vals:rValues},{l:"G",c:"#22c55e",vals:gValues},{l:"B",c:"#3b82f6",vals:bValues}].map((ch,i)=>(
+                <div key={ch.l} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"6px",
+                  opacity: splitPhase===1?1:0,
+                  transform: splitPhase===1?`translateY(0px) translateX(${(i-1)*0}px)`:`translateY(-12px)`,
+                  transition:`opacity 0.5s ${i*0.15}s, transform 0.5s ${i*0.15}s`}}>
+                  <div style={{color:ch.c,fontSize:"20px"}}>↓</div>
+                  <div style={{fontSize:"11px",fontWeight:"bold",color:ch.c}}>image[:,:,{i}]</div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"2px",
+                    border:`2px solid ${ch.c}66`,padding:"3px",borderRadius:"6px",background:ch.c+"11"}}>
+                    {ch.vals.map((v,idx)=>(
+                      <div key={idx} style={{width:"22px",height:"22px",borderRadius:"3px",
+                        background:ch.c, opacity: Math.max(0.1, v/255),
+                        display:"flex",alignItems:"center",justifyContent:"center"}}>
+                        <span style={{fontSize:"6px",color:"white",textShadow:"0 0 2px #000"}}>{v}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{fontSize:"10px",color:ch.c}}>{ch.l} канал</div>
+                  <div style={{fontSize:"9px",color:"#6b7280"}}>(4, 4)</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{background:"#1f2937",borderRadius:"8px",padding:"8px 14px",
+              border:"1px solid #374151",fontSize:"12px",textAlign:"center"}}>
+              <span style={{color:"#c084fc"}}>r, g, b</span>
+              <span style={{color:"#9ca3af"}}> = image[:,:,0], image[:,:,1], image[:,:,2]</span>
+            </div>
+          </div>
+        )}
+
+        {/* ── STEP 7: Три матрицы каналов ── */}
+        {step===7 && (
+          <div className="anim-in" style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"20px"}}>
+            <div style={{display:"flex",gap:"16px",flexWrap:"wrap",justifyContent:"center"}}>
+              <ChannelMatrix label="R  image[0]" color="#ef4444" values={rValues} delay={0}/>
+              <ChannelMatrix label="G  image[1]" color="#22c55e" values={gValues} delay={0.2}/>
+              <ChannelMatrix label="B  image[2]" color="#3b82f6" values={bValues} delay={0.4}/>
+            </div>
+            <div style={{background:"#1f2937",borderRadius:"10px",padding:"12px",
+              border:"1px solid #8b5cf6",fontSize:"12px",maxWidth:"320px",width:"100%",
+              display:"flex",flexDirection:"column",gap:"6px"}}>
+              <div style={{color:"#fde047",fontWeight:"bold",textAlign:"center",marginBottom:"4px"}}>
+                Доступ к каналу в PyTorch (C, H, W)
+              </div>
+              {[
+                {code:"tensor[0]", comment:"→ вся R-матрица (H, W)"},
+                {code:"tensor[1]", comment:"→ вся G-матрица (H, W)"},
+                {code:"tensor[2]", comment:"→ вся B-матрица (H, W)"},
+                {code:"tensor[0, 2, 1]", comment:"→ R пикселя row=2, col=1"},
+              ].map((x,i)=>(
+                <div key={i} style={{display:"flex",gap:"8px",alignItems:"center"}}>
+                  <span style={{color:"#93c5fd",fontWeight:"bold",minWidth:"110px"}}>{x.code}</span>
+                  <span style={{color:"#9ca3af"}}>{x.comment}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{background:"#0f172a",borderRadius:"8px",padding:"8px 14px",
+              border:"1px solid #4b5563",fontSize:"11px",color:"#6b7280",textAlign:"center"}}>
+              Именно поэтому PyTorch требует (C, H, W):<br/>
+              <span style={{color:"#a78bfa"}}>быстрый доступ к целому каналу одним индексом</span>
+            </div>
+          </div>
+        )}
+
+        {/* ── STEP 8: GPU ── */}
+        {step===8 && (
+          <div className="anim-in" style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"20px"}}>
+
+            {/* CPU vs GPU visual */}
+            <div style={{display:"flex",gap:"20px",alignItems:"flex-start",flexWrap:"wrap",justifyContent:"center"}}>
+
+              {/* CPU */}
+              <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"8px"}}>
+                <div style={{fontSize:"12px",color:"#f87171",fontWeight:"bold"}}>CPU</div>
+                <div style={{background:"#1f2937",borderRadius:"10px",padding:"10px",
+                  border:"2px solid #f87171",width:"120px"}}>
+                  <div style={{fontSize:"10px",color:"#9ca3af",marginBottom:"6px",textAlign:"center"}}>
+                    4–16 ядер
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:"3px"}}>
+                    {Array.from({length:8}).map((_,i)=>(
+                      <div key={i} style={{height:"20px",borderRadius:"3px",
+                        background: i===gpuTick%8?"#ef4444":"#374151",
+                        transition:"background 0.1s",
+                        display:"flex",alignItems:"center",justifyContent:"center",
+                        fontSize:"7px",color:"white"}}>
+                        {i===gpuTick%8?"▶":""}
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{fontSize:"9px",color:"#f87171",marginTop:"6px",textAlign:"center"}}>
+                    1 пиксель за раз
+                  </div>
+                </div>
+                <div style={{background:"#1f2937",borderRadius:"6px",padding:"6px",
+                  border:"1px solid #374151",fontSize:"10px",width:"120px",color:"#9ca3af",textAlign:"center"}}>
+                  1 228 800 операций<br/>
+                  <span style={{color:"#f87171"}}>последовательно</span>
+                </div>
+              </div>
+
+              {/* vs */}
+              <div style={{fontSize:"18px",color:"#6b7280",paddingTop:"40px"}}>vs</div>
+
+              {/* GPU */}
+              <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"8px"}}>
+                <div style={{fontSize:"12px",color:"#4ade80",fontWeight:"bold"}}>GPU</div>
+                <div style={{background:"#1f2937",borderRadius:"10px",padding:"10px",
+                  border:"2px solid #4ade80",width:"160px"}}>
+                  <div style={{fontSize:"10px",color:"#9ca3af",marginBottom:"6px",textAlign:"center"}}>
+                    тысячи ядер CUDA
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(8,1fr)",gap:"2px"}}>
+                    {Array.from({length:64}).map((_,i)=>(
+                      <div key={i} style={{height:"10px",borderRadius:"2px",
+                        background:"#22c55e",
+                        opacity: 0.3 + 0.7*(Math.sin(gpuTick*0.3+i*0.4+1)*0.5+0.5),
+                        transition:"opacity 0.1s"}}/>
+                    ))}
+                  </div>
+                  <div style={{fontSize:"9px",color:"#4ade80",marginTop:"6px",textAlign:"center"}}>
+                    все пиксели сразу
+                  </div>
+                </div>
+                <div style={{background:"#1f2937",borderRadius:"6px",padding:"6px",
+                  border:"1px solid #374151",fontSize:"10px",width:"160px",color:"#9ca3af",textAlign:"center"}}>
+                  1 228 800 операций<br/>
+                  <span style={{color:"#4ade80"}}>параллельно</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Why it matters */}
+            <div style={{background:"#111827",borderRadius:"10px",padding:"14px",
+              border:"1px solid #8b5cf6",fontSize:"12px",maxWidth:"320px",width:"100%",
+              display:"flex",flexDirection:"column",gap:"8px"}}>
+              <div style={{color:"#fde047",fontWeight:"bold",fontSize:"13px",textAlign:"center",marginBottom:"2px"}}>
+                ⚡ Почему это важно для нейросетей
+              </div>
+              {[
+                {icon:"🖼️", text:"Батч из 32 фото = 32 × 1 228 800 = 39 млн чисел за один шаг"},
+                {icon:"🔁", text:"Обучение — это тысячи итераций вперёд + назад"},
+                {icon:"⚡", text:"GPU ускоряет в 10–100× по сравнению с CPU"},
+                {icon:"📦", text:"tensor.to('cuda') — перемещает весь массив на GPU"},
+              ].map((x,i)=>(
+                <div key={i} style={{display:"flex",gap:"8px",alignItems:"flex-start"}}>
+                  <span style={{fontSize:"14px",flexShrink:0}}>{x.icon}</span>
+                  <span style={{color:"#d1d5db",lineHeight:"1.4"}}>{x.text}</span>
+                </div>
+              ))}
+            </div>
+
+            <div style={{background:"#1f2937",borderRadius:"8px",padding:"8px 14px",
+              border:"1px solid #4b5563",fontSize:"11px",textAlign:"center"}}>
+              <span style={{color:"#c084fc"}}>device = </span>
+              <span style={{color:"#fde047"}}>'cuda' if torch.cuda.is_available() else 'cpu'</span>
+            </div>
+          </div>
+        )}
+
+        {/* Nav buttons */}
+        <div style={{display:"flex",gap:"10px",marginTop:"8px"}}>
+          <button className="btn" onClick={()=>setStep(s=>Math.max(0,s-1))}
+            disabled={step===0} style={{...s,background:"#374151"}}>
+            ← Назад
+          </button>
+          <button className="btn" onClick={autoPlay} disabled={busy}
+            style={{...s,background:"#7c3aed"}}>
+            {busy?"▶ Играет...":"▶ Авто"}
+          </button>
+          <button className="btn" onClick={()=>setStep(s=>Math.min(STEPS.length-1,s+1))}
+            disabled={step===STEPS.length-1} style={{...s,background:"#374151"}}>
+            Вперёд →
+          </button>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
