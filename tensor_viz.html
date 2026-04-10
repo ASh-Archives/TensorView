@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Тензоры: от скаляра до куба</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Crimson+Pro:ital,wght@0,300;0,600;1,300&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+* { box-sizing:border-box; margin:0; padding:0; }
+body {
+  background: #07090f;
+  color: #e2e8f0;
+  font-family: 'JetBrains Mono', monospace;
+  overflow-x: hidden;
+}
+.btn { cursor:pointer; border:none; font-family:'JetBrains Mono',monospace; }
+.btn:disabled { opacity:0.3; cursor:default; }
+
+@keyframes fadeUp   { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+@keyframes fadeIn   { from{opacity:0} to{opacity:1} }
+@keyframes rotateCW { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+@keyframes pulse    { 0%,100%{opacity:0.5;transform:scale(1)} 50%{opacity:1;transform:scale(1.08)} }
+@keyframes arrowGrow{ from{stroke-dashoffset:80} to{stroke-dashoffset:0} }
+@keyframes bounce   { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-5px)} }
+@keyframes glow     { 0%,100%{box-shadow:0 0 8px #f59e0b44} 50%{box-shadow:0 0 20px #f59e0baa} }
+@keyframes slideR   { from{opacity:0;transform:translateX(-20px)} to{opacity:1;transform:translateX(0)} }
+@keyframes matCell  { from{opacity:0;transform:scale(0.6)} to{opacity:1;transform:scale(1)} }
+
+.anim-up  { animation: fadeUp  0.45s ease both; }
+.anim-in  { animation: fadeIn  0.4s ease both; }
+.anim-r   { animation: slideR  0.4s ease both; }
+.pulse    { animation: pulse   2s ease-in-out infinite; }
+.bounce   { animation: bounce  2s ease-in-out infinite; }
+.glow     { animation: glow    2s ease-in-out infinite; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+/* ─────────────────────────── helpers ─────────────────────────── */
+const TAB_COLORS = {
+  intro: { base:"#64748b", bright:"#94a3b8", dim:"#1e2533" },
+  r0:    { base:"#f59e0b", bright:"#fbbf24", dim:"#2d1f00" },
+  r1:    { base:"#10b981", bright:"#34d399", dim:"#00231a" },
+  r2:    { base:"#3b82f6", bright:"#60a5fa", dim:"#00153b" },
+  r3:    { base:"#a855f7", bright:"#c084fc", dim:"#1e0033" },
+};
+
+const Code = ({children, color="#fde047"}) => (
+  <span style={{color, fontWeight:"600", fontSize:"13px"}}>{children}</span>
+);
+
+const Card = ({children, color="#3b82f6", style={}}) => (
+  <div style={{background:`${color}11`, border:`1px solid ${color}44`,
+    borderRadius:"10px", padding:"14px", ...style}}>
+    {children}
+  </div>
+);
+
+const Badge = ({n, color}) => (
+  <div style={{display:"inline-flex",alignItems:"center",justifyContent:"center",
+    width:"28px",height:"28px",borderRadius:"50%",background:color,
+    fontSize:"13px",fontWeight:"700",color:"#07090f",flexShrink:0}}>
+    {n}
+  </div>
+);
+
+/* ─────────────────────── SVG: coordinate axes ─────────────────── */
+const Axes2D = ({angle=0, vectorX=60, vectorY=40, showVector=true,
+                 showComponents=false, color="#10b981", size=160}) => {
+  const cx=size/2, cy=size/2, L=65;
+  const rad = angle*Math.PI/180;
+  const cos=Math.cos(rad), sin=Math.sin(rad);
+  // rotated axes
+  const ax1={x: cx+L*cos,        y: cy-L*sin};
+  const ay1={x: cx-L*sin,        y: cy-L*cos};
+  const ax2={x: cx-L*cos,        y: cy+L*sin};
+  const ay2={x: cx+L*sin,        y: cy+L*cos};
+  // vector tip (fixed arrow in world space)
+  const vx=cx+vectorX, vy=cy-vectorY;
+  // components onto rotated axes
+  // project vector onto x'-axis: comp_x = vX*cos + vY*sin  (world vector (vX,vY) = (vectorX,vectorY))
+  const wx=vectorX, wy=vectorY;
+  const compX = wx*cos + wy*sin;
+  const compY = -wx*sin + wy*cos;
+  // foot of perpendicular from vTip onto x'-axis
+  const foot1x = cx + compX*cos;
+  const foot1y = cy - compX*sin;
+  const foot2x = cx - compY*sin;
+  const foot2y = cy - compY*cos;
+
+  return (
+    <svg width={size} height={size} style={{overflow:"visible"}}>
+      {/* axes */}
+      <line x1={ax2.x} y1={ax2.y} x2={ax1.x} y2={ax1.y} stroke="#ffffff33" strokeWidth="1.5"/>
+      <line x1={ay2.x} y1={ay2.y} x2={ay1.x} y2={ay1.y} stroke="#ffffff33" strokeWidth="1.5"/>
+      {/* axis labels */}
+      <text x={ax1.x+6} y={ax1.y+4} fill="#ffffff66" fontSize="11" fontFamily="JetBrains Mono">x'</text>
+      <text x={ay1.x+2} y={ay1.y-4} fill="#ffffff66" fontSize="11" fontFamily="JetBrains Mono">y'</text>
+      {/* component dashed lines */}
+      {showComponents && showVector && <>
+        <line x1={cx} y1={cy} x2={foot1x} y2={foot1y} stroke="#f59e0b" strokeWidth="1.5" strokeDasharray="4,3" opacity="0.8"/>
+        <line x1={cx} y1={cy} x2={foot2x} y2={foot2y} stroke="#f59e0b" strokeWidth="1.5" strokeDasharray="4,3" opacity="0.8"/>
+        <line x1={vx} y1={vy} x2={foot1x} y2={foot1y} stroke="#f59e0b44" strokeWidth="1" strokeDasharray="3,3"/>
+        <line x1={vx} y1={vy} x2={foot2x} y2={foot2y} stroke="#f59e0b44" strokeWidth="1" strokeDasharray="3,3"/>
+        {/* component labels */}
+        <text x={(cx+foot1x)/2+4} y={(cy+foot1y)/2+12} fill="#fbbf24" fontSize="10" fontFamily="JetBrains Mono">v'ₓ={compX.toFixed(0)}</text>
+        <text x={(cx+foot2x)/2-36} y={(cy+foot2y)/2} fill="#fbbf24" fontSize="10" fontFamily="JetBrains Mono">v'ᵧ={compY.toFixed(0)}</text>
+      </>}
+      {/* vector */}
+      {showVector && <>
+        <defs>
+          <marker id={`arrow-${color.replace('#','')}`} markerWidth="6" markerHeight="6"
+            refX="3" refY="3" orient="auto">
+            <path d="M0,0 L0,6 L6,3 z" fill={color}/>
+          </marker>
+        </defs>
+        <line x1={cx} y1={cy} x2={vx} y2={vy}
+          stroke={color} strokeWidth="2.5"
+          markerEnd={`url(#arrow-${color.replace('#','')})`}/>
+      </>}
+      {/* origin */}
+      <circle cx={cx} cy={cy} r="3" fill="#ffffff66"/>
+    </svg>
+  );
+};
+
+/* ─────────────────────── SVG: 3D vector sketch ────────────────── */
+const Vector3D = ({vx=50,vy=40,vz=30,color="#10b981",size=180}) => {
+  const ox=50, oy=130;
+  // isometric offsets
+  const ix=0.7, iy=-0.4; // x-axis direction
+  const jx=0,  jy=-0.85; // y-axis (up)
+  const kx=-0.7,ky=-0.4; // z-axis
+  const ax=vx*0.9, ay=vy*0.9, az=vz*0.9;
+  const tip={ x:ox+ax*ix+ay*jx+az*kx, y:oy+ax*iy+ay*jy+az*ky };
+  const xEnd={x:ox+90*ix, y:oy+90*iy};
+  const yEnd={x:ox+90*jx, y:oy+90*jy};
+  const zEnd={x:ox+90*kx, y:oy+90*ky};
+  // component feet
+  const fx={x:ox+ax*ix, y:oy+ax*iy};
+  const fy={x:ox+ay*jx, y:oy+ay*jy};
+  const fz={x:ox+az*kx, y:oy+az*ky};
+  return (
+    <svg width={size} height={size} style={{overflow:"visible"}}>
+      <defs>
+        <marker id="arr3d" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L6,3 z" fill="#ffffff55"/>
+        </marker>
+        <marker id="arrvec3d" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L6,3 z" fill={color}/>
+        </marker>
+        <marker id="arrx" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L6,3 z" fill="#f87171"/>
+        </marker>
+        <marker id="arry" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L6,3 z" fill="#4ade80"/>
+        </marker>
+        <marker id="arrz" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L6,3 z" fill="#60a5fa"/>
+        </marker>
+      </defs>
+      {/* coordinate axes */}
+      <line x1={ox} y1={oy} x2={xEnd.x} y2={xEnd.y} stroke="#f87171" strokeWidth="1.5" markerEnd="url(#arrx)"/>
+      <line x1={ox} y1={oy} x2={yEnd.x} y2={yEnd.y} stroke="#4ade80" strokeWidth="1.5" markerEnd="url(#arry)"/>
+      <line x1={ox} y1={oy} x2={zEnd.x} y2={zEnd.y} stroke="#60a5fa" strokeWidth="1.5" markerEnd="url(#arrz)"/>
+      <text x={xEnd.x+5} y={xEnd.y+4} fill="#f87171" fontSize="11" fontFamily="JetBrains Mono">X</text>
+      <text x={yEnd.x+2} y={yEnd.y-4} fill="#4ade80" fontSize="11" fontFamily="JetBrains Mono">Y</text>
+      <text x={zEnd.x-16} y={zEnd.y+4} fill="#60a5fa" fontSize="11" fontFamily="JetBrains Mono">Z</text>
+      {/* component dashed projections */}
+      <line x1={ox} y1={oy} x2={fx.x} y2={fx.y} stroke="#f87171" strokeWidth="1.5" strokeDasharray="4,3" opacity="0.7"/>
+      <line x1={ox} y1={oy} x2={fy.x} y2={fy.y} stroke="#4ade80" strokeWidth="1.5" strokeDasharray="4,3" opacity="0.7"/>
+      <line x1={ox} y1={oy} x2={fz.x} y2={fz.y} stroke="#60a5fa" strokeWidth="1.5" strokeDasharray="4,3" opacity="0.7"/>
+      {/* dashed lines to tip */}
+      <line x1={fx.x} y1={fx.y} x2={tip.x} y2={tip.y} stroke="#f8717144" strokeWidth="1" strokeDasharray="3,3"/>
+      <line x1={fy.x} y1={fy.y} x2={tip.x} y2={tip.y} stroke="#4ade8044" strokeWidth="1" strokeDasharray="3,3"/>
+      <line x1={fz.x} y1={fz.y} x2={tip.x} y2={tip.y} stroke="#60a5fa44" strokeWidth="1" strokeDasharray="3,3"/>
+      {/* vector */}
+      <line x1={ox} y1={oy} x2={tip.x} y2={tip.y}
+        stroke={color} strokeWidth="3" markerEnd="url(#arrvec3d)"/>
+      {/* component labels */}
+      <text x={fx.x+4} y={fx.y+12} fill="#f87171" fontSize="10" fontFamily="JetBrains Mono">vₓ={vx}</text>
+      <text x={fy.x+4} y={fy.y-4} fill="#4ade80" fontSize="10" fontFamily="JetBrains Mono">vᵧ={vy}</text>
+      <text x={fz.x-36} y={fz.y+4} fill="#60a5fa" fontSize="10" fontFamily="JetBrains Mono">v_z={vz}</text>
+      {/* origin */}
+      <circle cx={ox} cy={oy} r="3" fill="#ffffff66"/>
+    </svg>
+  );
+};
+
+/* ──────────────────── Matrix visual ──────────────────── */
+const MatrixViz = ({data, rowLabels, colLabels, highlightCell=null, cellColor="#3b82f6"}) => {
+  const rows=data.length, cols=data[0].length;
+  return (
+    <div style={{display:"inline-block"}}>
+      {/* col labels */}
+      <div style={{display:"flex",marginLeft:"70px",marginBottom:"4px"}}>
+        {colLabels.map((l,ci)=>(
+          <div key={ci} style={{width:"62px",textAlign:"center",fontSize:"10px",color:"#60a5fa",fontWeight:"600"}}>{l}</div>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:"6px"}}>
+        {/* row labels */}
+        <div style={{display:"flex",flexDirection:"column",justifyContent:"space-around",width:"64px"}}>
+          {rowLabels.map((l,ri)=>(
+            <div key={ri} style={{height:"36px",display:"flex",alignItems:"center",
+              justifyContent:"flex-end",paddingRight:"6px",fontSize:"10px",color:"#4ade80",fontWeight:"600"}}>{l}</div>
+          ))}
+        </div>
+        {/* matrix cells */}
+        <div style={{display:"grid",gridTemplateColumns:`repeat(${cols},62px)`,gap:"3px",
+          border:`2px solid ${cellColor}44`,padding:"4px",borderRadius:"8px",background:cellColor+"0a"}}>
+          {data.map((row,ri)=>row.map((val,ci)=>{
+            const isHl = highlightCell && highlightCell[0]===ri && highlightCell[1]===ci;
+            return (
+              <div key={`${ri}-${ci}`}
+                style={{height:"36px",borderRadius:"5px",
+                  background: isHl ? cellColor+"66" : cellColor+"22",
+                  border: isHl ? `2px solid ${cellColor}` : `1px solid ${cellColor}33`,
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                  fontSize:"12px",fontWeight:"600",color:"white",
+                  transition:"all 0.3s",
+                  animation: isHl?"matCell 0.3s ease":"none"}}>
+                {val}
+              </div>
+            );
+          }))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ──────────────────── Rank-3 cube visual ──────────────────── */
+const Cube3D = ({layers, layerColors, layerLabels, size=180}) => {
+  const n = layers.length;
+  const W=54, H=36, gap=22;
+  const totalH = H + (n-1)*gap + 30;
+  return (
+    <div style={{position:"relative",width:`${W+60}px`,height:`${totalH+20}px`}}>
+      {layers.map((layer,li)=>{
+        const top = (n-1-li)*gap;
+        const cols = layer[0].length;
+        const color = layerColors[li];
+        return (
+          <div key={li} style={{position:"absolute",top:`${top}px`,left:"0px"}}>
+            <div style={{fontSize:"9px",color,marginBottom:"2px",fontWeight:"600"}}>
+              {layerLabels[li]}
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:`repeat(${cols},1fr)`,
+              gap:"2px",border:`2px solid ${color}66`,padding:"3px",borderRadius:"6px",
+              background:color+"11",opacity:0.85+li*0.05}}>
+              {layer.map((row,ri)=>row.map((val,ci)=>(
+                <div key={`${ri}-${ci}`} style={{width:"22px",height:"16px",borderRadius:"3px",
+                  background:color+"44",border:`1px solid ${color}55`,
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                  fontSize:"8px",color:"white",fontWeight:"600"}}>{val}</div>
+              )))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+/* ══════════════════════════ MAIN APP ══════════════════════════ */
+function App() {
+  const [tab, setTab]         = React.useState("intro");
+  const [axisAngle, setAxisAngle] = React.useState(0);
+  const [spinning, setSpinning]   = React.useState(false);
+  const [hlCell, setHlCell]       = React.useState(null);
+  const [cubeLayer, setCubeLayer] = React.useState(0);
+  const [step, setStep]           = React.useState(0); // substep within tab
+  const spinRef = React.useRef(null);
+
+  const startSpin = () => {
+    if(spinning) { clearInterval(spinRef.current); setSpinning(false); return; }
+    setSpinning(true);
+    spinRef.current = setInterval(()=>setAxisAngle(a=>(a+2)%360), 40);
+  };
+  React.useEffect(()=>()=>clearInterval(spinRef.current),[]);
+
+  // price matrix data (Товары × Валюты)
+  const priceUSD = [[10, 20, 15], [8, 25, 12]];
+  const priceRUB = [[1000, 2000, 1500], [800, 2500, 1200]];
+  const priceEUR = [[9, 18, 14], [7, 23, 11]];
+  const rowLabels  = ["Яблоки (кг)","Кофе (кг)"];
+  const colLabels  = ["Магазин A","Магазин B","Магазин C"];
+  const currencies = ["USD","RUB","EUR"];
+  const cubeData   = [priceUSD, priceRUB, priceEUR];
+  const cubeColors = ["#f59e0b","#ef4444","#3b82f6"];
+
+  const tabs = [
+    {id:"intro", label:"🧩 Что такое тензор?"},
+    {id:"r0",    label:"Ранг 0 — Скаляр"},
+    {id:"r1",    label:"Ранг 1 — Вектор"},
+    {id:"r2",    label:"Ранг 2 — Матрица"},
+    {id:"r3",    label:"Ранг 3 — Куб"},
+  ];
+
+  const tc = TAB_COLORS[tab];
+
+  const vx=60,vy=40; // vector world coords
+  const rad=axisAngle*Math.PI/180;
+  const c=Math.cos(rad),s=Math.sin(rad);
+  const compX = Math.round(vx*c + vy*s);
+  const compY = Math.round(-vx*s + vy*c);
+
+  return (
+    <div style={{minHeight:"100vh",background:"#07090f",color:"#e2e8f0",
+      fontFamily:"'JetBrains Mono',monospace",padding:"16px"}}>
+
+      {/* Header */}
+      <div style={{textAlign:"center",marginBottom:"20px"}}>
+        <h1 style={{fontSize:"20px",fontWeight:"700",
+          background:"linear-gradient(90deg,#f59e0b,#10b981,#3b82f6,#a855f7)",
+          WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",
+          marginBottom:"6px"}}>
+          Тензоры: от точки до куба
+        </h1>
+        <p style={{color:"#64748b",fontSize:"12px"}}>
+          Одна аналогия — четыре ранга — одна идея
+        </p>
+      </div>
+
+      {/* Tabs */}
+      <div style={{display:"flex",gap:"4px",marginBottom:"20px",flexWrap:"wrap",justifyContent:"center"}}>
+        {tabs.map(t=>{
+          const tc2=TAB_COLORS[t.id];
+          const active=tab===t.id;
+          return (
+            <button key={t.id} className="btn" onClick={()=>{setTab(t.id);setStep(0);}}
+              style={{padding:"7px 12px",borderRadius:"8px",fontSize:"11px",fontWeight:"600",
+                background: active?tc2.base:tc2.dim,
+                color: active?"#07090f":tc2.base,
+                border:`1px solid ${tc2.base}`,
+                transition:"all 0.2s"}}>
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ─── INTRO ─── */}
+      {tab==="intro" && (
+        <div className="anim-up" style={{maxWidth:"480px",margin:"0 auto",display:"flex",flexDirection:"column",gap:"16px"}}>
+          <Card color="#64748b">
+            <p style={{fontFamily:"'Crimson Pro',serif",fontSize:"17px",lineHeight:"1.7",color:"#cbd5e1",fontStyle:"italic"}}>
+              «Тензор — это объект в пространстве. Он существует сам по себе.<br/>
+              Его <strong style={{color:"#fde047",fontStyle:"normal"}}>компоненты</strong> (числа) зависят от наблюдателя.<br/>
+              Но сам объект — нет.»
+            </p>
+          </Card>
+
+          <div style={{display:"flex",flexDirection:"column",gap:"10px"}}>
+            {[
+              {rank:"0",name:"Скаляр",  indices:"0 индексов",ex:"Температура: 36.6°",   color:"#f59e0b",
+               what:"Одно число. Не зависит от осей координат вообще."},
+              {rank:"1",name:"Вектор",  indices:"1 индекс",  ex:"Сила: [Fx, Fy, Fz]",  color:"#10b981",
+               what:"Список чисел = стрелка в пространстве. Числа меняются при повороте, стрелка — нет."},
+              {rank:"2",name:"Матрица", indices:"2 индекса", ex:"Цена[товар][магазин]", color:"#3b82f6",
+               what:"Таблица чисел. Описывает связь двух направлений сразу."},
+              {rank:"3",name:"Куб",     indices:"3 индекса", ex:"Цена[товар][магазин][валюта]",color:"#a855f7",
+               what:"Стопка матриц. Три оси — три индекса."},
+            ].map(item=>(
+              <div key={item.rank}
+                style={{display:"flex",gap:"12px",alignItems:"flex-start",
+                  background:item.color+"0d",border:`1px solid ${item.color}33`,
+                  borderRadius:"10px",padding:"12px"}}>
+                <Badge n={item.rank} color={item.color}/>
+                <div>
+                  <div style={{display:"flex",gap:"8px",alignItems:"center",marginBottom:"4px"}}>
+                    <span style={{fontWeight:"700",color:item.color}}>{item.name}</span>
+                    <span style={{fontSize:"10px",color:"#64748b",background:"#ffffff0d",
+                      padding:"1px 6px",borderRadius:"4px"}}>{item.indices}</span>
+                  </div>
+                  <div style={{fontSize:"11px",color:"#94a3b8",lineHeight:"1.5"}}>{item.what}</div>
+                  <div style={{fontSize:"10px",color:"#64748b",marginTop:"3px",fontStyle:"italic"}}>{item.ex}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <Card color="#64748b" style={{textAlign:"center"}}>
+            <div style={{fontSize:"12px",color:"#94a3b8",lineHeight:"1.8"}}>
+              <strong style={{color:"#fde047"}}>Главная идея:</strong><br/>
+              Ранг = сколько индексов нужно, чтобы<br/>
+              указать на <em style={{color:"#10b981"}}>одно конкретное число</em> внутри
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* ─── RANK 0 ─── */}
+      {tab==="r0" && (
+        <div className="anim-up" style={{maxWidth:"480px",margin:"0 auto",display:"flex",flexDirection:"column",gap:"16px"}}>
+          <Card color="#f59e0b">
+            <div style={{fontSize:"13px",color:"#fbbf24",fontWeight:"700",marginBottom:"8px"}}>
+              🌡 Скаляр = одно число без направления
+            </div>
+            <p style={{fontSize:"12px",color:"#d1d5db",lineHeight:"1.7"}}>
+              Скаляр — это просто <strong style={{color:"#fde047"}}>одно число</strong>.<br/>
+              Неважно, как ты повернёшь оси координат, неважно, в каких единицах измеряешь —
+              это число остаётся тем же самым объектом.
+            </p>
+          </Card>
+
+          {/* Visual: rotating axes, scalar stays fixed */}
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"12px"}}>
+            <div style={{fontSize:"11px",color:"#64748b",marginBottom:"-4px"}}>Крути оси — точка не двигается</div>
+            <div style={{position:"relative"}}>
+              <Axes2D angle={axisAngle} showVector={false} size={160}/>
+              {/* fixed scalar dot */}
+              <div className="pulse" style={{position:"absolute",
+                top:"50%",left:"50%",transform:"translate(20px,-30px)",
+                width:"28px",height:"28px",borderRadius:"50%",
+                background:"#f59e0b",display:"flex",alignItems:"center",justifyContent:"center",
+                fontSize:"11px",fontWeight:"700",color:"#07090f",zIndex:10}}>
+                36.6
+              </div>
+            </div>
+            <button className="btn glow" onClick={startSpin}
+              style={{padding:"6px 16px",borderRadius:"8px",fontSize:"12px",fontWeight:"600",
+                background: spinning?"#f59e0b":"#f59e0b22",color:spinning?"#07090f":"#fbbf24",
+                border:"1px solid #f59e0b"}}>
+              {spinning?"⏹ Стоп":"▶ Крутить оси"}
+            </button>
+          </div>
+
+          {/* Analogy */}
+          <div style={{display:"flex",flexDirection:"column",gap:"8px"}}>
+            <div style={{fontSize:"12px",color:"#f59e0b",fontWeight:"700"}}>Аналогия с деньгами:</div>
+            {[
+              {icon:"🍎",text:"У тебя 5 яблок. Всегда 5 — в любой системе счёта."},
+              {icon:"💰",text:"Общая выручка магазина за день = 50 000 руб. Одно число."},
+              {icon:"🌡",text:"Температура тела = 36.6°C. Не зависит от того, стоишь ли ты на севере или юге."},
+            ].map((x,i)=>(
+              <div key={i} style={{display:"flex",gap:"10px",alignItems:"flex-start",
+                background:"#f59e0b0a",borderRadius:"8px",padding:"10px",border:"1px solid #f59e0b22"}}>
+                <span style={{fontSize:"18px"}}>{x.icon}</span>
+                <span style={{fontSize:"12px",color:"#d1d5db",lineHeight:"1.5"}}>{x.text}</span>
+              </div>
+            ))}
+          </div>
+
+          <Card color="#f59e0b">
+            <div style={{fontSize:"12px",color:"#d1d5db",lineHeight:"1.7"}}>
+              <strong style={{color:"#fde047"}}>Почему скаляр — тензор ранга 0?</strong><br/>
+              Потому что при смене базиса (системы координат) он преобразуется<br/>
+              по закону: <Code color="#fbbf24">T' = T</Code><br/>
+              То есть — никак не меняется. Ноль преобразований. Ранг 0.
+            </div>
+          </Card>
+
+          <div style={{background:"#f59e0b0d",border:"1px solid #f59e0b33",borderRadius:"8px",
+            padding:"10px",textAlign:"center"}}>
+            <Code color="#fde047">scalar.shape = ()</Code>
+            <span style={{color:"#64748b",fontSize:"11px"}}> — пустой shape, ноль осей</span>
+          </div>
+        </div>
+      )}
+
+      {/* ─── RANK 1 ─── */}
+      {tab==="r1" && (
+        <div className="anim-up" style={{maxWidth:"520px",margin:"0 auto",display:"flex",flexDirection:"column",gap:"16px"}}>
+          <Card color="#10b981">
+            <div style={{fontSize:"13px",color:"#34d399",fontWeight:"700",marginBottom:"8px"}}>
+              🏹 Вектор = стрелка в пространстве
+            </div>
+            <p style={{fontSize:"12px",color:"#d1d5db",lineHeight:"1.7"}}>
+              Вектор — это <strong style={{color:"#fde047"}}>направление + величина</strong>.<br/>
+              Представь стрелку в комнате. Стрелка реальна — она никуда не двигается.<br/>
+              Но если ты <em style={{color:"#34d399"}}>повернёшь линейку</em>, которой измеряешь,
+              то числа (компоненты) изменятся. Сама стрелка — нет.
+            </p>
+          </Card>
+
+          {/* 2D vector + rotation */}
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"8px"}}>
+            <div style={{fontSize:"11px",color:"#64748b",textAlign:"center"}}>
+              Стрелка фиксирована. Крутятся оси измерения.
+            </div>
+            <div style={{display:"flex",gap:"20px",alignItems:"center",flexWrap:"wrap",justifyContent:"center"}}>
+              <Axes2D angle={axisAngle} vectorX={vx} vectorY={vy}
+                showVector={true} showComponents={true} color="#34d399" size={180}/>
+              <div style={{display:"flex",flexDirection:"column",gap:"8px"}}>
+                <div style={{fontSize:"11px",color:"#94a3b8"}}>Угол поворота осей:</div>
+                <div style={{fontSize:"22px",fontWeight:"700",color:"#fde047",textAlign:"center"}}>
+                  {axisAngle}°
+                </div>
+                <div style={{background:"#1f2937",borderRadius:"8px",padding:"10px",
+                  border:"1px solid #374151",fontSize:"12px",minWidth:"140px"}}>
+                  <div style={{color:"#94a3b8",marginBottom:"4px"}}>Компоненты:</div>
+                  <div style={{color:"#f87171"}}>v'ₓ = <strong>{compX}</strong></div>
+                  <div style={{color:"#4ade80"}}>v'ᵧ = <strong>{compY}</strong></div>
+                  <div style={{color:"#64748b",fontSize:"10px",marginTop:"6px"}}>
+                    |v| = {Math.round(Math.sqrt(vx*vx+vy*vy))} ← не меняется!
+                  </div>
+                </div>
+              </div>
+            </div>
+            <button className="btn" onClick={startSpin}
+              style={{padding:"6px 16px",borderRadius:"8px",fontSize:"12px",fontWeight:"600",
+                background: spinning?"#10b981":"#10b98122",color:spinning?"#07090f":"#34d399",
+                border:"1px solid #10b981"}}>
+              {spinning?"⏹ Стоп":"▶ Крутить оси"}
+            </button>
+          </div>
+
+          {/* 3D section */}
+          <Card color="#10b981">
+            <div style={{fontSize:"12px",color:"#34d399",fontWeight:"700",marginBottom:"8px"}}>
+              А что такое вектор в 3D?
+            </div>
+            <div style={{display:"flex",gap:"16px",alignItems:"flex-start",flexWrap:"wrap"}}>
+              <Vector3D vx={50} vy={40} vz={30} color="#34d399" size={175}/>
+              <div style={{fontSize:"12px",color:"#d1d5db",lineHeight:"1.8",flex:1,minWidth:"160px"}}>
+                В 3D стрелке нужно<br/>
+                <strong style={{color:"#fde047"}}>три числа</strong>:<br/>
+                <span style={{color:"#f87171"}}>vₓ</span> — насколько вправо<br/>
+                <span style={{color:"#4ade80"}}>vᵧ</span> — насколько вверх<br/>
+                <span style={{color:"#60a5fa"}}>v_z</span> — насколько вперёд<br/>
+                <br/>
+                <span style={{color:"#64748b",fontSize:"11px"}}>
+                  Повернёшь оси — все три числа изменятся.<br/>
+                  Стрелка останется той же.
+                </span>
+              </div>
+            </div>
+          </Card>
+
+          {/* Money analogy */}
+          <div style={{background:"#10b9810d",border:"1px solid #10b98133",borderRadius:"10px",padding:"12px"}}>
+            <div style={{fontSize:"12px",color:"#34d399",fontWeight:"700",marginBottom:"8px"}}>Аналогия с ценами (вектор):</div>
+            <div style={{display:"flex",gap:"12px",alignItems:"flex-start"}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:"11px",color:"#94a3b8",marginBottom:"6px"}}>В USD (базис 1):</div>
+                <div style={{background:"#1f2937",borderRadius:"6px",padding:"8px",fontSize:"12px"}}>
+                  <div>Яблоки: <Code color="#fbbf24">10</Code></div>
+                  <div>Кофе:   <Code color="#fbbf24">20</Code></div>
+                </div>
+              </div>
+              <div style={{color:"#8b5cf6",fontSize:"22px",paddingTop:"20px"}}>→</div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:"11px",color:"#94a3b8",marginBottom:"6px"}}>В RUB (базис 2, ×100):</div>
+                <div style={{background:"#1f2937",borderRadius:"6px",padding:"8px",fontSize:"12px"}}>
+                  <div>Яблоки: <Code color="#ef4444">1000</Code></div>
+                  <div>Кофе:   <Code color="#ef4444">2000</Code></div>
+                </div>
+              </div>
+            </div>
+            <div style={{fontSize:"11px",color:"#64748b",marginTop:"8px",lineHeight:"1.6"}}>
+              Числа изменились (10→1000), но товары те же самые.<br/>
+              Вектор цен = <em style={{color:"#34d399"}}>один и тот же объект</em>, два разных представления.
+            </div>
+          </div>
+
+          <div style={{background:"#10b9810d",border:"1px solid #10b98133",borderRadius:"8px",
+            padding:"10px",textAlign:"center"}}>
+            <Code color="#34d399">prices.shape = (2,)</Code>
+            <span style={{color:"#64748b",fontSize:"11px"}}> — один индекс, 2 товара</span>
+          </div>
+        </div>
+      )}
+
+      {/* ─── RANK 2 ─── */}
+      {tab==="r2" && (
+        <div className="anim-up" style={{maxWidth:"520px",margin:"0 auto",display:"flex",flexDirection:"column",gap:"16px"}}>
+          <Card color="#3b82f6">
+            <div style={{fontSize:"13px",color:"#60a5fa",fontWeight:"700",marginBottom:"8px"}}>
+              📋 Тензор 2-го ранга = таблица (матрица)
+            </div>
+            <p style={{fontSize:"12px",color:"#d1d5db",lineHeight:"1.7"}}>
+              Вектор описывал цены <em>одного товара</em> в одной валюте.<br/>
+              Теперь у нас <strong style={{color:"#fde047"}}>два измерения</strong>:<br/>
+              <span style={{color:"#4ade80"}}>товаров несколько</span> + <span style={{color:"#60a5fa"}}>магазинов несколько</span>.<br/>
+              Нужен не список, а <strong style={{color:"#fde047"}}>таблица</strong>.
+            </p>
+          </Card>
+
+          {/* Matrix visualization */}
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"10px"}}>
+            <div style={{fontSize:"11px",color:"#64748b"}}>Кликни на ячейку</div>
+            <div style={{overflowX:"auto",width:"100%",display:"flex",justifyContent:"center"}}>
+              <div>
+                <div style={{display:"flex",marginLeft:"70px",marginBottom:"4px",gap:"0px"}}>
+                  {colLabels.map((l,ci)=>(
+                    <div key={ci} style={{width:"62px",textAlign:"center",fontSize:"10px",
+                      color:"#60a5fa",fontWeight:"600"}}>{l}</div>
+                  ))}
+                </div>
+                <div style={{display:"flex",gap:"6px"}}>
+                  <div style={{display:"flex",flexDirection:"column",justifyContent:"space-around",width:"64px"}}>
+                    {rowLabels.map((l,ri)=>(
+                      <div key={ri} style={{height:"36px",display:"flex",alignItems:"center",
+                        justifyContent:"flex-end",paddingRight:"6px",fontSize:"10px",
+                        color:"#4ade80",fontWeight:"600"}}>{l}</div>
+                    ))}
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,62px)",gap:"3px",
+                    border:"2px solid #3b82f644",padding:"4px",borderRadius:"8px",background:"#3b82f60a"}}>
+                    {priceUSD.map((row,ri)=>row.map((val,ci)=>{
+                      const isHl=hlCell&&hlCell[0]===ri&&hlCell[1]===ci;
+                      return (
+                        <button key={`${ri}-${ci}`} className="btn"
+                          onClick={()=>setHlCell(isHl?null:[ri,ci])}
+                          style={{height:"36px",borderRadius:"5px",
+                            background:isHl?"#3b82f666":"#3b82f622",
+                            border:`${isHl?2:1}px solid ${isHl?"#3b82f6":"#3b82f633"}`,
+                            fontSize:"13px",fontWeight:"600",color:"white",
+                            transition:"all 0.2s",cursor:"pointer"}}>
+                          ${val}
+                        </button>
+                      );
+                    }))}
+                  </div>
+                </div>
+              </div>
+            </div>
+            {hlCell && (
+              <div className="anim-r" style={{background:"#1f2937",borderRadius:"8px",padding:"10px",
+                border:"1px solid #3b82f6",fontSize:"12px",textAlign:"center"}}>
+                <Code color="#93c5fd">price_matrix</Code>
+                <Code color="#fde047">[{hlCell[0]}, {hlCell[1]}]</Code>
+                <Code color="#9ca3af"> = </Code>
+                <Code color="#86efac">${priceUSD[hlCell[0]][hlCell[1]]}</Code>
+                <div style={{color:"#64748b",fontSize:"10px",marginTop:"4px"}}>
+                  {rowLabels[hlCell[0]]} в {colLabels[hlCell[1]]}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Transformation */}
+          <div style={{background:"#3b82f60d",border:"1px solid #3b82f633",borderRadius:"10px",padding:"12px"}}>
+            <div style={{fontSize:"12px",color:"#60a5fa",fontWeight:"700",marginBottom:"10px"}}>
+              Смена базиса: USD → RUB (×100)
+            </div>
+            <div style={{display:"flex",gap:"12px",alignItems:"center",flexWrap:"wrap",justifyContent:"center"}}>
+              <div style={{textAlign:"center"}}>
+                <div style={{fontSize:"10px",color:"#94a3b8",marginBottom:"4px"}}>USD</div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(3,38px)",gap:"2px",
+                  border:"1px solid #f59e0b44",padding:"3px",borderRadius:"6px"}}>
+                  {priceUSD.map((row,ri)=>row.map((v,ci)=>(
+                    <div key={`${ri}-${ci}`} style={{height:"26px",background:"#f59e0b22",borderRadius:"3px",
+                      display:"flex",alignItems:"center",justifyContent:"center",fontSize:"10px",color:"#fbbf24"}}>
+                      ${v}
+                    </div>
+                  )))}
+                </div>
+              </div>
+              <div style={{color:"#8b5cf6",fontSize:"20px"}}>×100</div>
+              <div style={{color:"#8b5cf6",fontSize:"20px"}}>→</div>
+              <div style={{textAlign:"center"}}>
+                <div style={{fontSize:"10px",color:"#94a3b8",marginBottom:"4px"}}>RUB</div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(3,46px)",gap:"2px",
+                  border:"1px solid #ef444444",padding:"3px",borderRadius:"6px"}}>
+                  {priceRUB.map((row,ri)=>row.map((v,ci)=>(
+                    <div key={`${ri}-${ci}`} style={{height:"26px",background:"#ef444422",borderRadius:"3px",
+                      display:"flex",alignItems:"center",justifyContent:"center",fontSize:"9px",color:"#fca5a5"}}>
+                      ₽{v}
+                    </div>
+                  )))}
+                </div>
+              </div>
+            </div>
+            <div style={{fontSize:"11px",color:"#64748b",marginTop:"10px",lineHeight:"1.6"}}>
+              Все числа умножились на 100. Но смысл таблицы — тот же.<br/>
+              <strong style={{color:"#60a5fa"}}>Та же матрица, другой базис.</strong>
+            </div>
+          </div>
+
+          <Card color="#3b82f6">
+            <div style={{fontSize:"12px",color:"#d1d5db",lineHeight:"1.7"}}>
+              <strong style={{color:"#60a5fa"}}>Нужно ДВА индекса:</strong><br/>
+              <Code color="#4ade80">price[i]</Code> <Code color="#94a3b8">←</Code> <Code color="#fbbf24">какой товар</Code><br/>
+              <Code color="#4ade80">price[i, j]</Code> <Code color="#94a3b8">←</Code> <Code color="#fbbf24">товар i в магазине j</Code><br/><br/>
+              <Code color="#60a5fa">price.shape = (2, 3)</Code>
+              <span style={{color:"#64748b",fontSize:"11px"}}> — 2 товара, 3 магазина</span>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* ─── RANK 3 ─── */}
+      {tab==="r3" && (
+        <div className="anim-up" style={{maxWidth:"520px",margin:"0 auto",display:"flex",flexDirection:"column",gap:"16px"}}>
+          <Card color="#a855f7">
+            <div style={{fontSize:"13px",color:"#c084fc",fontWeight:"700",marginBottom:"8px"}}>
+              🧊 Тензор 3-го ранга = куб (стопка матриц)
+            </div>
+            <p style={{fontSize:"12px",color:"#d1d5db",lineHeight:"1.7"}}>
+              У нас уже есть матрица: <span style={{color:"#4ade80"}}>товары</span> × <span style={{color:"#60a5fa"}}>магазины</span>.<br/>
+              Теперь добавим <strong style={{color:"#fde047"}}>третье измерение: валюта</strong>.<br/>
+              Получается не таблица, а <strong style={{color:"#c084fc"}}>стопка таблиц</strong> — куб.
+            </p>
+          </Card>
+
+          {/* Cube visual */}
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"12px"}}>
+            <div style={{fontSize:"11px",color:"#64748b",textAlign:"center"}}>
+              Каждый слой = отдельная валюта
+            </div>
+            <div style={{display:"flex",gap:"20px",alignItems:"flex-start",flexWrap:"wrap",justifyContent:"center"}}>
+              <Cube3D
+                layers={cubeData}
+                layerColors={cubeColors}
+                layerLabels={["USD: price[0]","RUB: price[1]","EUR: price[2]"]}
+                size={200}/>
+              <div style={{display:"flex",flexDirection:"column",gap:"8px"}}>
+                <div style={{fontSize:"11px",color:"#94a3b8"}}>Выбери слой:</div>
+                {currencies.map((cur,i)=>(
+                  <button key={i} className="btn"
+                    onClick={()=>setCubeLayer(i)}
+                    style={{padding:"6px 12px",borderRadius:"6px",fontSize:"11px",fontWeight:"600",
+                      background:cubeLayer===i?cubeColors[i]:cubeColors[i]+"22",
+                      color:cubeLayer===i?"#07090f":cubeColors[i],
+                      border:`1px solid ${cubeColors[i]}`,transition:"all 0.2s"}}>
+                    {cur} — слой {i}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Selected layer detail */}
+          <div style={{background:cubeColors[cubeLayer]+"0d",border:`1px solid ${cubeColors[cubeLayer]}33`,
+            borderRadius:"10px",padding:"12px"}}>
+            <div style={{fontSize:"12px",color:cubeColors[cubeLayer],fontWeight:"700",marginBottom:"10px"}}>
+              price[{cubeLayer}] — матрица в {currencies[cubeLayer]}:
+            </div>
+            <div style={{display:"flex",justifyContent:"center",overflowX:"auto"}}>
+              <div>
+                <div style={{display:"flex",marginLeft:"70px",marginBottom:"4px"}}>
+                  {colLabels.map((l,ci)=>(
+                    <div key={ci} style={{width:"54px",textAlign:"center",fontSize:"9px",
+                      color:cubeColors[cubeLayer],fontWeight:"600"}}>{l}</div>
+                  ))}
+                </div>
+                <div style={{display:"flex",gap:"4px"}}>
+                  <div style={{display:"flex",flexDirection:"column",justifyContent:"space-around",width:"64px"}}>
+                    {rowLabels.map((l,ri)=>(
+                      <div key={ri} style={{height:"30px",display:"flex",alignItems:"center",
+                        justifyContent:"flex-end",paddingRight:"6px",fontSize:"9px",
+                        color:"#94a3b8",fontWeight:"600"}}>{l}</div>
+                    ))}
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,54px)",gap:"2px",
+                    border:`2px solid ${cubeColors[cubeLayer]}44`,padding:"3px",borderRadius:"6px"}}>
+                    {cubeData[cubeLayer].map((row,ri)=>row.map((val,ci)=>(
+                      <div key={`${ri}-${ci}`} style={{height:"30px",background:cubeColors[cubeLayer]+"33",
+                        borderRadius:"4px",display:"flex",alignItems:"center",justifyContent:"center",
+                        fontSize:"11px",fontWeight:"700",color:"white"}}>
+                        {val}
+                      </div>
+                    )))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Index access */}
+          <Card color="#a855f7">
+            <div style={{fontSize:"12px",color:"#d1d5db",lineHeight:"1.8"}}>
+              <strong style={{color:"#c084fc"}}>Нужно ТРИ индекса:</strong><br/>
+              <Code color="#c084fc">price[k]</Code><Code color="#64748b"> → матрица валюты k</Code><br/>
+              <Code color="#c084fc">price[k, i]</Code><Code color="#64748b"> → строка товара i в валюте k</Code><br/>
+              <Code color="#c084fc">price[k, i, j]</Code><Code color="#64748b"> → одно конкретное число</Code><br/>
+              <br/>
+              <Code color="#c084fc">price.shape = (3, 2, 3)</Code><br/>
+              <span style={{color:"#64748b",fontSize:"11px"}}>3 валюты × 2 товара × 3 магазина</span>
+            </div>
+          </Card>
+
+          {/* Connection to images */}
+          <div style={{background:"#a855f70d",border:"1px solid #a855f733",borderRadius:"10px",padding:"12px"}}>
+            <div style={{fontSize:"12px",color:"#c084fc",fontWeight:"700",marginBottom:"8px"}}>
+              🖼 Ты уже знаешь тензор 3-го ранга!
+            </div>
+            <div style={{fontSize:"12px",color:"#d1d5db",lineHeight:"1.7"}}>
+              Изображение = тензор ранга 3:<br/>
+              <Code color="#4ade80">image[строка, столбец, канал]</Code><br/>
+              <br/>
+              <span style={{color:"#64748b"}}>
+                канал 0 = R<br/>
+                канал 1 = G<br/>
+                канал 2 = B<br/>
+              </span>
+              <br/>
+              <Code color="#c084fc">image.shape = (640, 640, 3)</Code><br/>
+              <span style={{color:"#64748b",fontSize:"11px"}}>высота × ширина × 3 канала</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Summary bar ─── */}
+      {tab!=="intro" && (
+        <div style={{maxWidth:"520px",margin:"20px auto 0",
+          background:"#0d1117",border:"1px solid #1e293b",borderRadius:"10px",
+          padding:"10px 14px",display:"flex",gap:"10px",alignItems:"center",flexWrap:"wrap"}}>
+          {[
+            {r:"0",name:"Скаляр", shape:"()",       c:"#f59e0b"},
+            {r:"1",name:"Вектор", shape:"(N,)",      c:"#10b981"},
+            {r:"2",name:"Матрица",shape:"(N, M)",    c:"#3b82f6"},
+            {r:"3",name:"Куб",    shape:"(N, M, K)", c:"#a855f7"},
+          ].map(x=>(
+            <div key={x.r} style={{display:"flex",gap:"6px",alignItems:"center",
+              opacity: (
+                (x.r==="0"&&tab==="r0")||(x.r==="1"&&tab==="r1")||
+                (x.r==="2"&&tab==="r2")||(x.r==="3"&&tab==="r3")
+              ) ? 1 : 0.35, transition:"opacity 0.3s"}}>
+              <Badge n={x.r} color={x.c}/>
+              <div style={{fontSize:"10px"}}>
+                <div style={{color:x.c,fontWeight:"600"}}>{x.name}</div>
+                <div style={{color:"#475569"}}>{x.shape}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
