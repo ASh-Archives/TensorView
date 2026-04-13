@@ -3,828 +3,1340 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Тензоры: от скаляра до куба</title>
+<title>Тензоры — полное объяснение</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Crimson+Pro:ital,wght@0,300;0,600;1,300&display=swap" rel="stylesheet"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
 <style>
 * { box-sizing:border-box; margin:0; padding:0; }
-body {
-  background: #07090f;
-  color: #e2e8f0;
-  font-family: 'JetBrains Mono', monospace;
-  overflow-x: hidden;
-}
+body { background:#07090f; color:#e2e8f0; font-family:'JetBrains Mono',monospace; overflow-x:hidden; }
 .btn { cursor:pointer; border:none; font-family:'JetBrains Mono',monospace; }
 .btn:disabled { opacity:0.3; cursor:default; }
-
-@keyframes fadeUp   { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
-@keyframes fadeIn   { from{opacity:0} to{opacity:1} }
-@keyframes rotateCW { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
-@keyframes pulse    { 0%,100%{opacity:0.5;transform:scale(1)} 50%{opacity:1;transform:scale(1.08)} }
-@keyframes arrowGrow{ from{stroke-dashoffset:80} to{stroke-dashoffset:0} }
-@keyframes bounce   { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-5px)} }
-@keyframes glow     { 0%,100%{box-shadow:0 0 8px #f59e0b44} 50%{box-shadow:0 0 20px #f59e0baa} }
-@keyframes slideR   { from{opacity:0;transform:translateX(-20px)} to{opacity:1;transform:translateX(0)} }
-@keyframes matCell  { from{opacity:0;transform:scale(0.6)} to{opacity:1;transform:scale(1)} }
-
-.anim-up  { animation: fadeUp  0.45s ease both; }
-.anim-in  { animation: fadeIn  0.4s ease both; }
-.anim-r   { animation: slideR  0.4s ease both; }
-.pulse    { animation: pulse   2s ease-in-out infinite; }
-.bounce   { animation: bounce  2s ease-in-out infinite; }
-.glow     { animation: glow    2s ease-in-out infinite; }
+@keyframes fadeUp  { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+@keyframes pulse   { 0%,100%{transform:scale(1);opacity:.7} 50%{transform:scale(1.08);opacity:1} }
+@keyframes glow    { 0%,100%{box-shadow:0 0 6px #f59e0b44} 50%{box-shadow:0 0 18px #f59e0baa} }
+@keyframes slideR  { from{opacity:0;transform:translateX(-14px)} to{opacity:1;transform:translateX(0)} }
+.anim-up { animation:fadeUp 0.38s ease both; }
+.anim-r  { animation:slideR 0.35s ease both; }
+.pulse   { animation:pulse  2.3s ease-in-out infinite; }
+.glow    { animation:glow   2s ease-in-out infinite; }
 </style>
 </head>
 <body>
 <div id="root"></div>
 <script type="text/babel">
-
-/* ─────────────────────────── helpers ─────────────────────────── */
-const TAB_COLORS = {
-  intro: { base:"#64748b", bright:"#94a3b8", dim:"#1e2533" },
-  r0:    { base:"#f59e0b", bright:"#fbbf24", dim:"#2d1f00" },
-  r1:    { base:"#10b981", bright:"#34d399", dim:"#00231a" },
-  r2:    { base:"#3b82f6", bright:"#60a5fa", dim:"#00153b" },
-  r3:    { base:"#a855f7", bright:"#c084fc", dim:"#1e0033" },
+/* ══════════════ CONSTANTS ══════════════ */
+const TC = {
+  dict:{ base:"#94a3b8", dim:"#1e2533" },
+  r01: { base:"#f59e0b", dim:"#2d1e00" },
+  r2:  { base:"#3b82f6", dim:"#00153b" },
+  r3:  { base:"#a855f7", dim:"#1e0033" },
+  r4:  { base:"#06b6d4", dim:"#002233" },
+  repr:{ base:"#10b981", dim:"#00231a" },
 };
+const TABS = [
+  {id:"dict", label:"📖 Словарь"},
+  {id:"r01",  label:"Ранг 0 & 1"},
+  {id:"r2",   label:"Ранг 2 — Матрица"},
+  {id:"r3",   label:"Ранг 3 — Куб"},
+  {id:"r4",   label:"Ранг 4 — Батч"},
+  {id:"repr", label:"🔄 Тензор ≠ Форма"},
+];
 
-const Code = ({children, color="#fde047"}) => (
-  <span style={{color, fontWeight:"600", fontSize:"13px"}}>{children}</span>
-);
-
-const Card = ({children, color="#3b82f6", style={}}) => (
-  <div style={{background:`${color}11`, border:`1px solid ${color}44`,
-    borderRadius:"10px", padding:"14px", ...style}}>
+/* ══════════════ TINY HELPERS ══════════════ */
+const Kd = ({c="#fde047",ch}) => <span style={{color:c,fontWeight:"700",fontSize:"13px",fontFamily:"JetBrains Mono"}}>{ch}</span>;
+const Card = ({children,color="#3b82f6",style={}}) => (
+  <div style={{background:`${color}11`,border:`1px solid ${color}44`,borderRadius:"10px",padding:"14px",...style}}>
     {children}
   </div>
 );
-
-const Badge = ({n, color}) => (
+const Badge = ({n,color}) => (
   <div style={{display:"inline-flex",alignItems:"center",justifyContent:"center",
-    width:"28px",height:"28px",borderRadius:"50%",background:color,
-    fontSize:"13px",fontWeight:"700",color:"#07090f",flexShrink:0}}>
-    {n}
-  </div>
+    width:"26px",height:"26px",borderRadius:"50%",background:color,
+    fontSize:"12px",fontWeight:"700",color:"#07090f",flexShrink:0}}>{n}</div>
+);
+const Pill = ({children,color}) => (
+  <span style={{display:"inline-block",background:color+"22",border:`1px solid ${color}66`,
+    borderRadius:"6px",padding:"2px 8px",fontSize:"11px",color,fontWeight:"700"}}>{children}</span>
+);
+const hx = (h,a) => h+Math.round(a*255).toString(16).padStart(2,'0');
+
+/* ══════════════ SVG BUILDING BLOCKS ══════════════ */
+const C30=Math.cos(Math.PI/6), S30=Math.sin(Math.PI/6);
+const iso=(wx,wy,wz,ox,oy)=>({x:ox+wx*C30-wz*C30, y:oy-wy-wx*S30-wz*S30});
+const pts2s=ps=>ps.map(p=>`${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+const mkArr=(id,c)=>(
+  <marker key={id} id={id} markerWidth="5" markerHeight="5" refX="3" refY="2.5" orient="auto">
+    <path d="M0,0 L0,5 L5,2.5 z" fill={c}/>
+  </marker>
 );
 
-/* ─────────────────────── SVG: coordinate axes ─────────────────── */
-const Axes2D = ({angle=0, vectorX=60, vectorY=40, showVector=true,
-                 showComponents=false, color="#10b981", size=160}) => {
-  const cx=size/2, cy=size/2, L=65;
-  const rad = angle*Math.PI/180;
-  const cos=Math.cos(rad), sin=Math.sin(rad);
-  // rotated axes
-  const ax1={x: cx+L*cos,        y: cy-L*sin};
-  const ay1={x: cx-L*sin,        y: cy-L*cos};
-  const ax2={x: cx-L*cos,        y: cy+L*sin};
-  const ay2={x: cx+L*sin,        y: cy+L*cos};
-  // vector tip (fixed arrow in world space)
-  const vx=cx+vectorX, vy=cy-vectorY;
-  // components onto rotated axes
-  // project vector onto x'-axis: comp_x = vX*cos + vY*sin  (world vector (vX,vY) = (vectorX,vectorY))
-  const wx=vectorX, wy=vectorY;
-  const compX = wx*cos + wy*sin;
-  const compY = -wx*sin + wy*cos;
-  // foot of perpendicular from vTip onto x'-axis
-  const foot1x = cx + compX*cos;
-  const foot1y = cy - compX*sin;
-  const foot2x = cx - compY*sin;
-  const foot2y = cy - compY*cos;
-
+/* ── Axes2D ── */
+const Axes2D = ({angle=0,vx=60,vy=40,showV=true,showComp=false,color="#10b981",sz=160}) => {
+  const cx=sz/2,cy=sz/2,L=62;
+  const r=angle*Math.PI/180,co=Math.cos(r),si=Math.sin(r);
+  const ax1={x:cx+L*co,y:cy-L*si},ay1={x:cx-L*si,y:cy-L*co};
+  const ax2={x:cx-L*co,y:cy+L*si},ay2={x:cx+L*si,y:cy+L*co};
+  const tvx=cx+vx,tvy=cy-vy;
+  const cX=vx*co+vy*si,cY=-vx*si+vy*co;
+  const f1x=cx+cX*co,f1y=cy-cX*si,f2x=cx-cY*si,f2y=cy-cY*co;
+  const uid=color.replace(/\W/g,'');
   return (
-    <svg width={size} height={size} style={{overflow:"visible"}}>
-      {/* axes */}
+    <svg width={sz} height={sz} style={{overflow:"visible"}}>
+      <defs>{mkArr(`aax${uid}`,color)}</defs>
       <line x1={ax2.x} y1={ax2.y} x2={ax1.x} y2={ax1.y} stroke="#ffffff33" strokeWidth="1.5"/>
       <line x1={ay2.x} y1={ay2.y} x2={ay1.x} y2={ay1.y} stroke="#ffffff33" strokeWidth="1.5"/>
-      {/* axis labels */}
-      <text x={ax1.x+6} y={ax1.y+4} fill="#ffffff66" fontSize="11" fontFamily="JetBrains Mono">x'</text>
-      <text x={ay1.x+2} y={ay1.y-4} fill="#ffffff66" fontSize="11" fontFamily="JetBrains Mono">y'</text>
-      {/* component dashed lines */}
-      {showComponents && showVector && <>
-        <line x1={cx} y1={cy} x2={foot1x} y2={foot1y} stroke="#f59e0b" strokeWidth="1.5" strokeDasharray="4,3" opacity="0.8"/>
-        <line x1={cx} y1={cy} x2={foot2x} y2={foot2y} stroke="#f59e0b" strokeWidth="1.5" strokeDasharray="4,3" opacity="0.8"/>
-        <line x1={vx} y1={vy} x2={foot1x} y2={foot1y} stroke="#f59e0b44" strokeWidth="1" strokeDasharray="3,3"/>
-        <line x1={vx} y1={vy} x2={foot2x} y2={foot2y} stroke="#f59e0b44" strokeWidth="1" strokeDasharray="3,3"/>
-        {/* component labels */}
-        <text x={(cx+foot1x)/2+4} y={(cy+foot1y)/2+12} fill="#fbbf24" fontSize="10" fontFamily="JetBrains Mono">v'ₓ={compX.toFixed(0)}</text>
-        <text x={(cx+foot2x)/2-36} y={(cy+foot2y)/2} fill="#fbbf24" fontSize="10" fontFamily="JetBrains Mono">v'ᵧ={compY.toFixed(0)}</text>
+      <text x={ax1.x+5} y={ax1.y+4} fill="#ffffff55" fontSize="11" fontFamily="JetBrains Mono">x'</text>
+      <text x={ay1.x+2} y={ay1.y-4} fill="#ffffff55" fontSize="11" fontFamily="JetBrains Mono">y'</text>
+      {showComp && showV && <>
+        <line x1={cx} y1={cy} x2={f1x} y2={f1y} stroke="#f59e0b" strokeWidth="1.5" strokeDasharray="4,3" opacity="0.8"/>
+        <line x1={cx} y1={cy} x2={f2x} y2={f2y} stroke="#f59e0b" strokeWidth="1.5" strokeDasharray="4,3" opacity="0.8"/>
+        <line x1={tvx} y1={tvy} x2={f1x} y2={f1y} stroke="#f59e0b44" strokeWidth="1" strokeDasharray="3,3"/>
+        <line x1={tvx} y1={tvy} x2={f2x} y2={f2y} stroke="#f59e0b44" strokeWidth="1" strokeDasharray="3,3"/>
+        <text x={(cx+f1x)/2+4} y={(cy+f1y)/2+12} fill="#fbbf24" fontSize="10" fontFamily="JetBrains Mono">v'ₓ={cX.toFixed(0)}</text>
+        <text x={(cx+f2x)/2-38} y={(cy+f2y)/2} fill="#fbbf24" fontSize="10" fontFamily="JetBrains Mono">v'ᵧ={cY.toFixed(0)}</text>
       </>}
-      {/* vector */}
-      {showVector && <>
-        <defs>
-          <marker id={`arrow-${color.replace('#','')}`} markerWidth="6" markerHeight="6"
-            refX="3" refY="3" orient="auto">
-            <path d="M0,0 L0,6 L6,3 z" fill={color}/>
-          </marker>
-        </defs>
-        <line x1={cx} y1={cy} x2={vx} y2={vy}
-          stroke={color} strokeWidth="2.5"
-          markerEnd={`url(#arrow-${color.replace('#','')})`}/>
-      </>}
-      {/* origin */}
+      {showV && <line x1={cx} y1={cy} x2={tvx} y2={tvy} stroke={color} strokeWidth="2.5" markerEnd={`url(#aax${uid})`}/>}
       <circle cx={cx} cy={cy} r="3" fill="#ffffff66"/>
     </svg>
   );
 };
 
-/* ─────────────────────── SVG: 3D vector sketch ────────────────── */
-const Vector3D = ({vx=50,vy=40,vz=30,color="#10b981",size=180}) => {
-  const ox=50, oy=130;
-  // isometric offsets
-  const ix=0.7, iy=-0.4; // x-axis direction
-  const jx=0,  jy=-0.85; // y-axis (up)
-  const kx=-0.7,ky=-0.4; // z-axis
-  const ax=vx*0.9, ay=vy*0.9, az=vz*0.9;
-  const tip={ x:ox+ax*ix+ay*jx+az*kx, y:oy+ax*iy+ay*jy+az*ky };
-  const xEnd={x:ox+90*ix, y:oy+90*iy};
-  const yEnd={x:ox+90*jx, y:oy+90*jy};
-  const zEnd={x:ox+90*kx, y:oy+90*ky};
-  // component feet
-  const fx={x:ox+ax*ix, y:oy+ax*iy};
-  const fy={x:ox+ay*jx, y:oy+ay*jy};
-  const fz={x:ox+az*kx, y:oy+az*ky};
-  return (
-    <svg width={size} height={size} style={{overflow:"visible"}}>
-      <defs>
-        <marker id="arr3d" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
-          <path d="M0,0 L0,6 L6,3 z" fill="#ffffff55"/>
-        </marker>
-        <marker id="arrvec3d" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
-          <path d="M0,0 L0,6 L6,3 z" fill={color}/>
-        </marker>
-        <marker id="arrx" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
-          <path d="M0,0 L0,6 L6,3 z" fill="#f87171"/>
-        </marker>
-        <marker id="arry" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
-          <path d="M0,0 L0,6 L6,3 z" fill="#4ade80"/>
-        </marker>
-        <marker id="arrz" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
-          <path d="M0,0 L0,6 L6,3 z" fill="#60a5fa"/>
-        </marker>
-      </defs>
-      {/* coordinate axes */}
-      <line x1={ox} y1={oy} x2={xEnd.x} y2={xEnd.y} stroke="#f87171" strokeWidth="1.5" markerEnd="url(#arrx)"/>
-      <line x1={ox} y1={oy} x2={yEnd.x} y2={yEnd.y} stroke="#4ade80" strokeWidth="1.5" markerEnd="url(#arry)"/>
-      <line x1={ox} y1={oy} x2={zEnd.x} y2={zEnd.y} stroke="#60a5fa" strokeWidth="1.5" markerEnd="url(#arrz)"/>
-      <text x={xEnd.x+5} y={xEnd.y+4} fill="#f87171" fontSize="11" fontFamily="JetBrains Mono">X</text>
-      <text x={yEnd.x+2} y={yEnd.y-4} fill="#4ade80" fontSize="11" fontFamily="JetBrains Mono">Y</text>
-      <text x={zEnd.x-16} y={zEnd.y+4} fill="#60a5fa" fontSize="11" fontFamily="JetBrains Mono">Z</text>
-      {/* component dashed projections */}
-      <line x1={ox} y1={oy} x2={fx.x} y2={fx.y} stroke="#f87171" strokeWidth="1.5" strokeDasharray="4,3" opacity="0.7"/>
-      <line x1={ox} y1={oy} x2={fy.x} y2={fy.y} stroke="#4ade80" strokeWidth="1.5" strokeDasharray="4,3" opacity="0.7"/>
-      <line x1={ox} y1={oy} x2={fz.x} y2={fz.y} stroke="#60a5fa" strokeWidth="1.5" strokeDasharray="4,3" opacity="0.7"/>
-      {/* dashed lines to tip */}
-      <line x1={fx.x} y1={fx.y} x2={tip.x} y2={tip.y} stroke="#f8717144" strokeWidth="1" strokeDasharray="3,3"/>
-      <line x1={fy.x} y1={fy.y} x2={tip.x} y2={tip.y} stroke="#4ade8044" strokeWidth="1" strokeDasharray="3,3"/>
-      <line x1={fz.x} y1={fz.y} x2={tip.x} y2={tip.y} stroke="#60a5fa44" strokeWidth="1" strokeDasharray="3,3"/>
-      {/* vector */}
-      <line x1={ox} y1={oy} x2={tip.x} y2={tip.y}
-        stroke={color} strokeWidth="3" markerEnd="url(#arrvec3d)"/>
-      {/* component labels */}
-      <text x={fx.x+4} y={fx.y+12} fill="#f87171" fontSize="10" fontFamily="JetBrains Mono">vₓ={vx}</text>
-      <text x={fy.x+4} y={fy.y-4} fill="#4ade80" fontSize="10" fontFamily="JetBrains Mono">vᵧ={vy}</text>
-      <text x={fz.x-36} y={fz.y+4} fill="#60a5fa" fontSize="10" fontFamily="JetBrains Mono">v_z={vz}</text>
-      {/* origin */}
-      <circle cx={ox} cy={oy} r="3" fill="#ffffff66"/>
-    </svg>
-  );
+/* ── CubeISO ── */
+const CubeISO = ({layers,layerColors,layerNames,selected,onSelect,explode}) => {
+  const CW=22,CD=15,CH=8;
+  const nK=layers.length,nR=layers[0].length,nC=layers[0][0].length;
+  const TW=nC*CW,TD=nR*CD,OX=148,OY=222;
+  const prj=(wx,wy,wz)=>iso(wx,wy,wz,OX,OY);
+  const bY=k=>k*(CH+explode);
+  const draws=[];
+  for(let k=0;k<nK;k++){
+    const b=bY(k),t=b+CH,col=layerColors[k],sel=k===selected,a=sel?1:0.62;
+    draws.push({z:b-200+k*.1,render:()=>(<polygon key={`f${k}`} points={pts2s([prj(0,b,0),prj(TW,b,0),prj(TW,t,0),prj(0,t,0)])} fill={hx(col,a*.45)} stroke={hx(col,a*.9)} strokeWidth={sel?1.5:.5} style={{cursor:"pointer"}} onClick={()=>onSelect(k)}/>)});
+    draws.push({z:b-199+k*.1,render:()=>(<polygon key={`r${k}`} points={pts2s([prj(TW,b,0),prj(TW,b,TD),prj(TW,t,TD),prj(TW,t,0)])} fill={hx(col,a*.35)} stroke={hx(col,a*.9)} strokeWidth={sel?1.5:.5} style={{cursor:"pointer"}} onClick={()=>onSelect(k)}/>)});
+    for(let ri=0;ri<nR;ri++) for(let ci=0;ci<nC;ci++){
+      const cp=[prj(ci*CW,t,ri*CD),prj((ci+1)*CW,t,ri*CD),prj((ci+1)*CW,t,(ri+1)*CD),prj(ci*CW,t,(ri+1)*CD)];
+      const mx=(cp[0].x+cp[1].x+cp[2].x+cp[3].x)/4,my=(cp[0].y+cp[1].y+cp[2].y+cp[3].y)/4;
+      draws.push({z:t+ri*.01+ci*.001,render:()=>(
+        <g key={`c${k}${ri}${ci}`} style={{cursor:"pointer"}} onClick={()=>onSelect(k)}>
+          <polygon points={pts2s(cp)} fill={hx(col,sel?.82:.42)} stroke={hx(col,sel?1:.7)} strokeWidth={sel?1.2:.6}/>
+          <text x={mx} y={my+3.5} textAnchor="middle" fill={sel?"#fff":"#ffffffaa"} fontSize="8" fontFamily="JetBrains Mono" fontWeight="700">{layers[k][ri][ci]}</text>
+        </g>
+      )});
+    }
+    const lp=prj(TW+4,t-CH/2,TD/2);
+    draws.push({z:t+10,render:()=>(<text key={`lb${k}`} x={lp.x+4} y={lp.y+3} fill={hx(col,sel?1:.65)} fontSize="9" fontFamily="JetBrains Mono" fontWeight={sel?"700":"400"}>{layerNames[k]}</text>)});
+  }
+  const axes=()=>{
+    const o=prj(0,0,0),ax=prj(TW+12,0,0),az=prj(0,0,TD+10),ay=prj(0,nK*(CH+Math.max(explode,8)),0);
+    return(<g opacity=".5">
+      <defs>{[["axX","#f87171"],["axZ","#60a5fa"],["axY","#a855f7"]].map(([i,c])=>mkArr(i,c))}</defs>
+      <line x1={o.x} y1={o.y} x2={ax.x} y2={ax.y} stroke="#f87171" strokeWidth="1.5" markerEnd="url(#axX)"/>
+      <line x1={o.x} y1={o.y} x2={az.x} y2={az.y} stroke="#60a5fa" strokeWidth="1.5" markerEnd="url(#axZ)"/>
+      <line x1={o.x} y1={o.y} x2={ay.x} y2={ay.y} stroke="#a855f7" strokeWidth="1.5" markerEnd="url(#axY)"/>
+      <text x={ax.x+4} y={ax.y+4} fill="#f87171" fontSize="9" fontFamily="JetBrains Mono">магазины</text>
+      <text x={az.x-44} y={az.y+4} fill="#60a5fa" fontSize="9" fontFamily="JetBrains Mono">товары</text>
+      <text x={ay.x+4} y={ay.y} fill="#a855f7" fontSize="9" fontFamily="JetBrains Mono">валюта</text>
+    </g>);
+  };
+  draws.sort((a,b)=>a.z-b.z);
+  return(<svg width={310} height={245} style={{overflow:"visible",display:"block"}}>{axes()}{draws.map(d=>d.render())}</svg>);
 };
 
-/* ──────────────────── Matrix visual ──────────────────── */
-const MatrixViz = ({data, rowLabels, colLabels, highlightCell=null, cellColor="#3b82f6"}) => {
-  const rows=data.length, cols=data[0].length;
+/* ══════════════ TAB: СЛОВАРЬ ══════════════ */
+const TabDict = () => {
+  const terms = [
+    {
+      ru:"Тензор",en:"Tensor",
+      color:"#c084fc",
+      math:"Математический объект, существующий независимо от системы координат. Описывает физическую или абстрактную величину.",
+      code:"np.array(...)  ← одно представление тензора",
+      life:"Само изображение, сама скорость ветра — объект существует, неважно как его записать",
+      key:true,
+    },
+    {
+      ru:"Ранг (порядок)",en:"Rank / Order",
+      color:"#fbbf24",
+      math:"Количество индексов, нужных чтобы получить одно число. НЕ путать с размером.",
+      code:"len(tensor.shape)  ← количество осей",
+      life:"Ранг 0 = точка, Ранг 1 = список, Ранг 2 = таблица, Ранг 3 = куб",
+    },
+    {
+      ru:"Ось (axis)",en:"Axis / Dimension",
+      color:"#34d399",
+      math:"Одно направление (индекс) внутри тензора. Ранг = количество осей.",
+      code:"tensor.shape[i]  ← размер оси i",
+      life:"У матрицы 2 оси: строки и столбцы",
+    },
+    {
+      ru:"Форма (shape)",en:"Shape",
+      color:"#60a5fa",
+      math:"Кортеж из размеров каждой оси. Говорит «сколько элементов вдоль каждой оси».",
+      code:"tensor.shape = (3, 640, 640)  ← 3 оси, размеры 3, 640, 640",
+      life:"(3,640,640) = 3 слоя по 640×640",
+    },
+    {
+      ru:"Размерность оси",en:"Axis size",
+      color:"#f87171",
+      math:"Количество элементов вдоль конкретной оси. shape[i].",
+      code:"H = image.shape[0]  ← высота",
+      life:"Изображение 640×640 имеет оси размером 640 и 640",
+    },
+    {
+      ru:"Компонента",en:"Component",
+      color:"#fbbf24",
+      math:"Конкретное число внутри тензора. Зависит от базиса.",
+      code:"tensor[i, j, k]  ← одна компонента",
+      life:"Цена яблок в магазине А = одна компонента матрицы цен",
+    },
+    {
+      ru:"Базис",en:"Basis",
+      color:"#a78bfa",
+      math:"Система координат, в которой ты измеряешь. Смена базиса меняет компоненты, но не сам тензор.",
+      code:"# USD → RUB: компоненты ×100, тензор тот же",
+      life:"Валюта = базис для цен. Меняешь валюту — числа другие, товары те же",
+    },
+    {
+      ru:"Представление",en:"Representation",
+      color:"#22d3ee",
+      math:"Конкретная форма записи тензора в памяти компьютера. Один и тот же тензор может иметь shape (H,W,3) или (3,H,W).",
+      code:"np.transpose(image, (2,0,1))  ← меняет представление",
+      life:"Одно изображение — два способа хранить в памяти",
+    },
+  ];
+
+  const [open, setOpen] = React.useState(null);
+
   return (
-    <div style={{display:"inline-block"}}>
-      {/* col labels */}
-      <div style={{display:"flex",marginLeft:"70px",marginBottom:"4px"}}>
-        {colLabels.map((l,ci)=>(
-          <div key={ci} style={{width:"62px",textAlign:"center",fontSize:"10px",color:"#60a5fa",fontWeight:"600"}}>{l}</div>
-        ))}
-      </div>
-      <div style={{display:"flex",gap:"6px"}}>
-        {/* row labels */}
-        <div style={{display:"flex",flexDirection:"column",justifyContent:"space-around",width:"64px"}}>
-          {rowLabels.map((l,ri)=>(
-            <div key={ri} style={{height:"36px",display:"flex",alignItems:"center",
-              justifyContent:"flex-end",paddingRight:"6px",fontSize:"10px",color:"#4ade80",fontWeight:"600"}}>{l}</div>
+    <div className="anim-up" style={{maxWidth:"520px",margin:"0 auto",display:"flex",flexDirection:"column",gap:"10px"}}>
+      {/* Main definition */}
+      <div style={{background:"linear-gradient(135deg,#1e0033,#002233)",border:"2px solid #8b5cf688",
+        borderRadius:"14px",padding:"16px",marginBottom:"4px"}}>
+        <div style={{fontFamily:"'Crimson Pro',serif",fontSize:"17px",lineHeight:"1.9",color:"#e2e8f0",fontStyle:"italic"}}>
+          «Тензор — это объект, который <strong style={{color:"#fde047",fontStyle:"normal"}}>существует сам по себе</strong>.<br/>
+          Числа внутри зависят от того, как ты смотришь.<br/>
+          Объект — нет.»
+        </div>
+        <div style={{marginTop:"12px",display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"6px"}}>
+          {[
+            {l:"Тензор",sub:"объект",c:"#c084fc"},
+            {l:"Компоненты",sub:"числа в памяти",c:"#fbbf24"},
+            {l:"Базис",sub:"как смотришь",c:"#a78bfa"},
+          ].map(x=>(
+            <div key={x.l} style={{background:x.c+"11",border:`1px solid ${x.c}33`,borderRadius:"8px",padding:"8px",textAlign:"center"}}>
+              <div style={{fontSize:"11px",fontWeight:"700",color:x.c}}>{x.l}</div>
+              <div style={{fontSize:"9px",color:"#64748b",marginTop:"2px"}}>{x.sub}</div>
+            </div>
           ))}
         </div>
-        {/* matrix cells */}
-        <div style={{display:"grid",gridTemplateColumns:`repeat(${cols},62px)`,gap:"3px",
-          border:`2px solid ${cellColor}44`,padding:"4px",borderRadius:"8px",background:cellColor+"0a"}}>
-          {data.map((row,ri)=>row.map((val,ci)=>{
-            const isHl = highlightCell && highlightCell[0]===ri && highlightCell[1]===ci;
-            return (
-              <div key={`${ri}-${ci}`}
-                style={{height:"36px",borderRadius:"5px",
-                  background: isHl ? cellColor+"66" : cellColor+"22",
-                  border: isHl ? `2px solid ${cellColor}` : `1px solid ${cellColor}33`,
-                  display:"flex",alignItems:"center",justifyContent:"center",
-                  fontSize:"12px",fontWeight:"600",color:"white",
-                  transition:"all 0.3s",
-                  animation: isHl?"matCell 0.3s ease":"none"}}>
-                {val}
+      </div>
+
+      {/* Rank summary */}
+      <div style={{background:"#fbbf2408",border:"1px solid #fbbf2430",borderRadius:"10px",padding:"12px"}}>
+        <div style={{fontSize:"12px",fontWeight:"700",color:"#fbbf24",marginBottom:"8px"}}>Ранги — наглядно</div>
+        <div style={{display:"flex",flexDirection:"column",gap:"5px"}}>
+          {[
+            {r:0,n:"Скаляр",  s:"()",          ex:"T = 36.6",         idx:"— нет индексов —",  c:"#f59e0b"},
+            {r:1,n:"Вектор",  s:"(N,)",         ex:"T = [10, 20, 15]", idx:"T[i]",              c:"#10b981"},
+            {r:2,n:"Матрица", s:"(N, M)",       ex:"T = [[10,20],[8,25]]",idx:"T[i, j]",        c:"#3b82f6"},
+            {r:3,n:"Куб",     s:"(N, M, K)",    ex:"T = image (H×W×C)", idx:"T[i, j, k]",      c:"#a855f7"},
+            {r:4,n:"Батч",    s:"(B, N, M, K)", ex:"T = batch of images",idx:"T[b, i, j, k]",  c:"#06b6d4"},
+          ].map(x=>(
+            <div key={x.r} style={{display:"flex",gap:"8px",alignItems:"center",
+              background:x.c+"09",border:`1px solid ${x.c}22`,borderRadius:"8px",padding:"8px 10px"}}>
+              <Badge n={x.r} color={x.c}/>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",gap:"6px",alignItems:"center",flexWrap:"wrap"}}>
+                  <span style={{color:x.c,fontWeight:"700",fontSize:"12px"}}>{x.n}</span>
+                  <Pill color={x.c}>{x.s}</Pill>
+                </div>
+                <div style={{display:"flex",gap:"10px",marginTop:"3px",flexWrap:"wrap"}}>
+                  <span style={{fontSize:"10px",color:"#475569"}}>{x.ex}</span>
+                  <span style={{fontSize:"10px",color:"#fde047aa"}}>{x.idx}</span>
+                </div>
               </div>
-            );
-          }))}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Terms clickable */}
+      <div style={{fontSize:"12px",color:"#475569",marginBottom:"-4px"}}>Термины — нажми чтобы раскрыть:</div>
+      {terms.map((t,i)=>(
+        <div key={i} style={{background:t.color+"09",border:`1px solid ${t.color}${open===i?"55":"22"}`,
+          borderRadius:"10px",overflow:"hidden",transition:"all 0.2s"}}>
+          <button className="btn" style={{width:"100%",padding:"10px 14px",display:"flex",
+            gap:"10px",alignItems:"center",background:"transparent",textAlign:"left"}}
+            onClick={()=>setOpen(open===i?null:i)}>
+            <div style={{width:"8px",height:"8px",borderRadius:"50%",background:t.color,flexShrink:0}}/>
+            <span style={{color:t.color,fontWeight:"700",fontSize:"12px"}}>{t.ru}</span>
+            <span style={{color:"#475569",fontSize:"11px"}}>— {t.en}</span>
+            {t.key && <span style={{marginLeft:"auto",background:"#c084fc22",color:"#c084fc",
+              fontSize:"9px",padding:"2px 6px",borderRadius:"4px",fontWeight:"700"}}>КЛЮЧЕВОЙ</span>}
+            <span style={{marginLeft:"auto",color:"#475569",fontSize:"12px"}}>{open===i?"▲":"▼"}</span>
+          </button>
+          {open===i && (
+            <div className="anim-r" style={{padding:"0 14px 12px",display:"flex",flexDirection:"column",gap:"6px"}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"6px"}}>
+                {[
+                  {label:"📐 Математика",text:t.math,c:"#a78bfa"},
+                  {label:"💻 В NumPy",text:t.code,c:"#22d3ee"},
+                  {label:"🌍 В жизни",text:t.life,c:"#4ade80"},
+                ].map(s=>(
+                  <div key={s.label} style={{background:s.c+"0a",border:`1px solid ${s.c}22`,
+                    borderRadius:"7px",padding:"8px"}}>
+                    <div style={{fontSize:"10px",color:s.c,fontWeight:"700",marginBottom:"4px"}}>{s.label}</div>
+                    <div style={{fontSize:"10px",color:"#94a3b8",lineHeight:"1.6",fontFamily:s.label.includes("NumPy")?"JetBrains Mono":"inherit"}}>{s.text}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+
+      {/* Key warnings */}
+      <div style={{background:"#ef444408",border:"1px solid #ef444440",borderRadius:"10px",padding:"12px"}}>
+        <div style={{fontSize:"12px",fontWeight:"700",color:"#f87171",marginBottom:"8px"}}>⚠️ Частые путаницы</div>
+        <div style={{display:"flex",flexDirection:"column",gap:"6px"}}>
+          {[
+            {wrong:"Ранг = размерность пространства",right:"Ранг = число осей (число индексов)"},
+            {wrong:"Ранг 3 = трёхмерное пространство",right:"Ранг 3 = нужно 3 индекса чтобы взять число"},
+            {wrong:"Форма изменилась = другой тензор",right:"Форма = представление. Тензор может иметь разные формы"},
+            {wrong:"Массив и тензор — одно и то же",right:"Тензор — мат. объект. Массив — его представление в памяти"},
+          ].map((x,i)=>(
+            <div key={i} style={{display:"flex",gap:"6px",fontSize:"10px",lineHeight:"1.5"}}>
+              <span style={{color:"#ef4444",flexShrink:0}}>✗</span>
+              <span style={{color:"#64748b",textDecoration:"line-through"}}>{x.wrong}</span>
+              <span style={{color:"#64748b",margin:"0 2px"}}>→</span>
+              <span style={{color:"#4ade80"}}>✓ {x.right}</span>
+            </div>
+          ))}
         </div>
       </div>
     </div>
   );
 };
 
-/* ──────────────────── Rank-3 cube visual ──────────────────── */
-const Cube3D = ({layers, layerColors, layerLabels, size=180}) => {
-  const n = layers.length;
-  const W=54, H=36, gap=22;
-  const totalH = H + (n-1)*gap + 30;
+/* ══════════════ TAB: RANK 0 & 1 ══════════════ */
+const TabR01 = ({axisAngle, spinning, startSpin}) => {
+  const [curr, setCurr] = React.useState("USD");
+  const rate = curr==="USD" ? 1 : 100;
+  const vx=60,vy=40;
+  const rad=axisAngle*Math.PI/180;
+  const compX=Math.round(vx*Math.cos(rad)+vy*Math.sin(rad));
+  const compY=Math.round(-vx*Math.sin(rad)+vy*Math.cos(rad));
+  const len=Math.round(Math.sqrt(vx*vx+vy*vy));
+
+  // Price space visualization
+  const appleP=10*rate, coffeeP=20*rate;
+  const maxV=Math.max(appleP,coffeeP)*1.35;
+  const W=220,H=180,pL=52,pB=32,pR=22,pT=22;
+  const plotW=W-pL-pR,plotH=H-pB-pT;
+  const sx=v=>pL+(v/maxV)*plotW, sy=v=>H-pB-(v/maxV)*plotH;
+  const ox2=sx(0),oy2=sy(0);
+
   return (
-    <div style={{position:"relative",width:`${W+60}px`,height:`${totalH+20}px`}}>
-      {layers.map((layer,li)=>{
-        const top = (n-1-li)*gap;
-        const cols = layer[0].length;
-        const color = layerColors[li];
-        return (
-          <div key={li} style={{position:"absolute",top:`${top}px`,left:"0px"}}>
-            <div style={{fontSize:"9px",color,marginBottom:"2px",fontWeight:"600"}}>
-              {layerLabels[li]}
+    <div className="anim-up" style={{maxWidth:"520px",margin:"0 auto",display:"flex",flexDirection:"column",gap:"14px"}}>
+
+      {/* ─ RANK 0 ─ */}
+      <div style={{background:"#f59e0b11",border:"2px solid #f59e0b44",borderRadius:"12px",padding:"14px"}}>
+        <div style={{display:"flex",gap:"8px",alignItems:"center",marginBottom:"8px"}}>
+          <Badge n="0" color="#f59e0b"/>
+          <span style={{color:"#fbbf24",fontWeight:"700",fontSize:"13px"}}>Скаляр — одно число</span>
+        </div>
+        <p style={{fontSize:"12px",color:"#d1d5db",lineHeight:"1.7",marginBottom:"12px"}}>
+          Нет ни одного индекса. Число просто есть.<br/>
+          Не зависит ни от поворота осей, ни от базиса.
+        </p>
+        <div style={{display:"flex",gap:"16px",alignItems:"center",flexWrap:"wrap",justifyContent:"center"}}>
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"6px"}}>
+            <div style={{fontSize:"10px",color:"#64748b"}}>Крути оси — точка не двигается</div>
+            <div style={{position:"relative"}}>
+              <Axes2D angle={axisAngle} showV={false} sz={148}/>
+              <div className="pulse" style={{position:"absolute",top:"50%",left:"50%",
+                transform:"translate(18px,-28px)",width:"28px",height:"28px",borderRadius:"50%",
+                background:"#f59e0b",display:"flex",alignItems:"center",justifyContent:"center",
+                fontSize:"10px",fontWeight:"700",color:"#07090f",zIndex:10}}>36.6</div>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:`repeat(${cols},1fr)`,
-              gap:"2px",border:`2px solid ${color}66`,padding:"3px",borderRadius:"6px",
-              background:color+"11",opacity:0.85+li*0.05}}>
-              {layer.map((row,ri)=>row.map((val,ci)=>(
-                <div key={`${ri}-${ci}`} style={{width:"22px",height:"16px",borderRadius:"3px",
-                  background:color+"44",border:`1px solid ${color}55`,
-                  display:"flex",alignItems:"center",justifyContent:"center",
-                  fontSize:"8px",color:"white",fontWeight:"600"}}>{val}</div>
-              )))}
+            <button className="btn glow" onClick={startSpin}
+              style={{padding:"5px 14px",borderRadius:"8px",fontSize:"11px",fontWeight:"600",
+                background:spinning?"#f59e0b":"#f59e0b22",color:spinning?"#07090f":"#fbbf24",
+                border:"1px solid #f59e0b"}}>
+              {spinning?"⏹ Стоп":"▶ Крутить оси"}
+            </button>
+          </div>
+          <div style={{flex:1,minWidth:"140px",display:"flex",flexDirection:"column",gap:"6px"}}>
+            <Kd c="#fbbf24" ch="scalar = 36.6"/>
+            <Kd c="#64748b" ch="scalar.shape = ()"/>
+            <div style={{fontSize:"11px",color:"#94a3b8",lineHeight:"1.6",marginTop:"4px"}}>
+              <span style={{color:"#fde047"}}>shape = ()</span> — пустой кортеж.<br/>
+              Ноль осей. Ноль индексов.<br/>
+              Смена базиса: <span style={{color:"#4ade80"}}>T′ = T</span> — не меняется.
             </div>
           </div>
-        );
-      })}
+        </div>
+      </div>
+
+      {/* ─ RANK 1 ─ */}
+      <div style={{background:"#10b98111",border:"2px solid #10b98144",borderRadius:"12px",padding:"14px"}}>
+        <div style={{display:"flex",gap:"8px",alignItems:"center",marginBottom:"8px"}}>
+          <Badge n="1" color="#10b981"/>
+          <span style={{color:"#34d399",fontWeight:"700",fontSize:"13px"}}>Вектор — стрелка / точка в пространстве</span>
+        </div>
+        <p style={{fontSize:"12px",color:"#d1d5db",lineHeight:"1.7",marginBottom:"12px"}}>
+          Один индекс: <Kd c="#34d399" ch="v[i]"/>.<br/>
+          Вектор = стрелка от начала координат до точки.<br/>
+          Числа (компоненты) зависят от базиса — <strong style={{color:"#fde047"}}>стрелка нет</strong>.
+        </p>
+
+        {/* ─ Что такое вектор цены ─ */}
+        <div style={{background:"#07090f",border:"1px solid #1e293b",borderRadius:"10px",padding:"12px",marginBottom:"12px"}}>
+          <div style={{fontSize:"11px",color:"#34d399",fontWeight:"700",marginBottom:"8px"}}>
+            💡 Вектор [10, 20] — это ТОЧКА в «ценовом пространстве»
+          </div>
+          <div style={{display:"flex",gap:"12px",alignItems:"flex-start",flexWrap:"wrap",justifyContent:"center"}}>
+            {/* Plot */}
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"4px"}}>
+              <svg width={W} height={H} style={{overflow:"visible",display:"block"}}>
+                <defs>
+                  {mkArr("pvArr","#10b981")}
+                  {mkArr("pvArr2","#a78bfa")}
+                </defs>
+                {/* grid */}
+                {[.25,.5,.75,1].map((t,i)=>(
+                  <g key={i} opacity=".1">
+                    <line x1={sx(t*maxV)} y1={pT} x2={sx(t*maxV)} y2={oy2} stroke="white" strokeWidth=".7" strokeDasharray="3,3"/>
+                    <line x1={ox2} y1={sy(t*maxV)} x2={W-pR} y2={sy(t*maxV)} stroke="white" strokeWidth=".7" strokeDasharray="3,3"/>
+                  </g>
+                ))}
+                {/* axes */}
+                <line x1={ox2} y1={oy2} x2={W-pR} y2={oy2} stroke="#f87171" strokeWidth="1.5"/>
+                <line x1={ox2} y1={oy2} x2={ox2} y2={pT} stroke="#4ade80" strokeWidth="1.5"/>
+                <polygon points={`${W-pR-1},${oy2-3} ${W-pR-1},${oy2+3} ${W-pR+5},${oy2}`} fill="#f87171"/>
+                <polygon points={`${ox2-3},${pT+5} ${ox2+3},${pT+5} ${ox2},${pT-1}`} fill="#4ade80"/>
+                <text x={W-pR+4} y={oy2+13} fill="#f87171" fontSize="9" fontFamily="JetBrains Mono">🍎</text>
+                <text x={ox2-5} y={pT-3} textAnchor="end" fill="#4ade80" fontSize="9" fontFamily="JetBrains Mono">☕</text>
+                {/* tick values */}
+                {[.25,.5,.75,1].map((t,i)=>(
+                  <g key={i}>
+                    <text x={sx(t*maxV)} y={oy2+11} textAnchor="middle" fill="#ffffff28" fontSize="7" fontFamily="JetBrains Mono">{Math.round(t*maxV)}</text>
+                    <text x={ox2-5} y={sy(t*maxV)+3} textAnchor="end" fill="#ffffff28" fontSize="7" fontFamily="JetBrains Mono">{Math.round(t*maxV)}</text>
+                  </g>
+                ))}
+                {/* Ratio guide line */}
+                <line x1={ox2} y1={oy2} x2={sx(maxV*.43)} y2={sy(maxV*.43*2)}
+                  stroke="#ffffff0d" strokeWidth="1.2" strokeDasharray="6,4"/>
+                {/* Vector */}
+                <line x1={ox2} y1={oy2} x2={sx(appleP)-1} y2={sy(coffeeP)+1}
+                  stroke={curr==="USD"?"#10b981":"#a78bfa"} strokeWidth="2.8"
+                  markerEnd={curr==="USD"?"url(#pvArr)":"url(#pvArr2)"}/>
+                <circle cx={sx(appleP)} cy={sy(coffeeP)} r="5" fill={curr==="USD"?"#10b981":"#a78bfa"}/>
+                {/* label */}
+                <rect x={sx(appleP)+8} y={sy(coffeeP)-14} width="100" height="16" rx="3" fill="#07090fcc"/>
+                <text x={sx(appleP)+10} y={sy(coffeeP)-2} fill={curr==="USD"?"#34d399":"#c084fc"}
+                  fontSize="9.5" fontFamily="JetBrains Mono" fontWeight="700">
+                  [{appleP}, {coffeeP}] {curr}
+                </text>
+              </svg>
+              {/* Currency toggle */}
+              <div style={{display:"flex",gap:"6px"}}>
+                {["USD","RUB"].map(c=>(
+                  <button key={c} className="btn" onClick={()=>setCurr(c)}
+                    style={{padding:"4px 12px",borderRadius:"6px",fontSize:"11px",fontWeight:"700",
+                      background:curr===c?"#10b981":"#10b98122",color:curr===c?"#07090f":"#34d399",
+                      border:"1px solid #10b981",transition:"all 0.2s"}}>
+                    {c}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* Explanation */}
+            <div style={{flex:1,minWidth:"150px",fontSize:"11px",lineHeight:"1.8",color:"#d1d5db"}}>
+              Ось X = цена яблока<br/>
+              Ось Y = цена кофе<br/>
+              <br/>
+              Стрелка идёт до точки<br/>
+              <span style={{color:"#fde047",fontWeight:"700"}}>[{appleP}, {coffeeP}]</span><br/>
+              <br/>
+              <span style={{color:"#64748b",fontSize:"10px"}}>
+                Меняй валюту:<br/>
+                масштаб осей ×100<br/>
+                числа ×100<br/>
+                <span style={{color:"#4ade80"}}>направление — то же!</span><br/>
+                <span style={{color:"#4ade80"}}>кофе всегда 2× яблока</span>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* ─ Interactive rotation ─ */}
+        <div style={{display:"flex",gap:"16px",alignItems:"center",flexWrap:"wrap",justifyContent:"center"}}>
+          <Axes2D angle={axisAngle} vx={vx} vy={vy} showV={true} showComp={true} color="#34d399" sz={172}/>
+          <div style={{display:"flex",flexDirection:"column",gap:"7px"}}>
+            <div style={{fontSize:"11px",color:"#64748b"}}>Угол осей:</div>
+            <div style={{fontSize:"22px",fontWeight:"700",color:"#fde047"}}>{axisAngle}°</div>
+            <div style={{background:"#1f2937",borderRadius:"8px",padding:"9px",border:"1px solid #374151",fontSize:"12px",minWidth:"128px"}}>
+              <div style={{color:"#64748b",marginBottom:"4px",fontSize:"10px"}}>Компоненты:</div>
+              <div style={{color:"#f87171"}}>v'ₓ = {compX}</div>
+              <div style={{color:"#4ade80"}}>v'ᵧ = {compY}</div>
+              <div style={{color:"#475569",fontSize:"10px",marginTop:"6px"}}>|v| = {len} ← не меняется</div>
+            </div>
+          </div>
+        </div>
+        <div style={{textAlign:"center",marginTop:"8px"}}>
+          <button className="btn" onClick={startSpin}
+            style={{padding:"5px 16px",borderRadius:"8px",fontSize:"11px",fontWeight:"600",
+              background:spinning?"#10b981":"#10b98122",color:spinning?"#07090f":"#34d399",
+              border:"1px solid #10b981"}}>
+            {spinning?"⏹ Стоп":"▶ Крутить оси"}
+          </button>
+        </div>
+      </div>
+
+      <div style={{background:"#07090f",border:"1px solid #1e293b",borderRadius:"8px",padding:"10px",textAlign:"center",fontSize:"12px"}}>
+        <Kd c="#f59e0b" ch="scalar.shape = ()"/>
+        <span style={{color:"#475569"}}> — 0 осей, 0 индексов</span><br/>
+        <Kd c="#10b981" ch="vector.shape = (N,)"/>
+        <span style={{color:"#475569"}}> — 1 ось, 1 индекс: </span>
+        <Kd c="#fde047" ch="v[i]"/>
+      </div>
     </div>
   );
 };
 
-/* ══════════════════════════ MAIN APP ══════════════════════════ */
+/* ══════════════ TAB: RANK 2 ══════════════ */
+const TabR2 = () => {
+  const [hlRow, setHlRow] = React.useState(null);
+  const [curr,  setCurr]  = React.useState("USD");
+  const rate = curr==="USD" ? 1 : 100;
+
+  const priceBase = [[10,20,15],[8,25,12]];
+  const price = priceBase.map(row=>row.map(v=>v*rate));
+  const rowLabels = ["🍎 Яблоки","☕ Кофе"];
+  const colLabels = ["МагА","МагБ","МагВ"];
+  const rowColors = ["#f59e0b","#ef4444"];
+
+  // Correct angle between 2 row-vectors in (МагА, МагБ) subspace
+  const a=[priceBase[0][0],priceBase[0][1]], b=[priceBase[1][0],priceBase[1][1]];
+  const dot=a[0]*b[0]+a[1]*b[1];
+  const la=Math.sqrt(a[0]*a[0]+a[1]*a[1]),lb=Math.sqrt(b[0]*b[0]+b[1]*b[1]);
+  const angleDeg=Math.round(Math.acos(Math.min(1,dot/(la*lb)))*180/Math.PI);
+
+  // 2D vector plot in "store space" (МагА vs МагБ)
+  const maxV=Math.max(...price.map(r=>Math.max(r[0],r[1])))*1.4;
+  const W=200,H=175,pL=48,pB=30,pR=18,pT=18;
+  const plotW=W-pL-pR,plotH=H-pB-pT;
+  const sx=v=>pL+(v/maxV)*plotW, sy=v=>H-pB-(v/maxV)*plotH;
+  const ox=sx(0),oy=sy(0);
+
+  return (
+    <div className="anim-up" style={{maxWidth:"520px",margin:"0 auto",display:"flex",flexDirection:"column",gap:"14px"}}>
+      <div style={{background:"#3b82f611",border:"2px solid #3b82f644",borderRadius:"12px",padding:"14px"}}>
+        <div style={{display:"flex",gap:"8px",alignItems:"center",marginBottom:"8px"}}>
+          <Badge n="2" color="#3b82f6"/>
+          <span style={{color:"#60a5fa",fontWeight:"700",fontSize:"13px"}}>Матрица — таблица = стопка векторов</span>
+        </div>
+        <p style={{fontSize:"12px",color:"#d1d5db",lineHeight:"1.7"}}>
+          Два индекса: <Kd c="#60a5fa" ch="M[i, j]"/> — строка <em>i</em> и столбец <em>j</em>.<br/>
+          Матрица = каждая <strong style={{color:"#fde047"}}>строка есть вектор</strong> в «пространстве столбцов».
+        </p>
+      </div>
+
+      {/* ─ Clickable matrix table ─ */}
+      <div style={{background:"#07090f",border:"1px solid #1e293b",borderRadius:"10px",padding:"14px"}}>
+        <div style={{fontSize:"11px",color:"#64748b",marginBottom:"10px",textAlign:"center"}}>
+          Нажми на строку — увидишь её как вектор
+        </div>
+        <div style={{display:"flex",justifyContent:"center"}}>
+          <div>
+            {/* Column headers */}
+            <div style={{display:"flex",marginLeft:"82px",marginBottom:"6px"}}>
+              {colLabels.map((l,ci)=>(
+                <div key={ci} style={{width:"58px",textAlign:"center",fontSize:"10px",color:"#60a5fa",fontWeight:"700"}}>[j={ci}]<br/>{l}</div>
+              ))}
+            </div>
+            {/* Rows */}
+            {priceBase.map((row,ri)=>(
+              <div key={ri} style={{display:"flex",gap:"6px",marginBottom:"5px",alignItems:"center"}}>
+                {/* Row label button */}
+                <button className="btn" onClick={()=>setHlRow(hlRow===ri?null:ri)}
+                  style={{width:"76px",height:"40px",borderRadius:"7px",fontSize:"10px",fontWeight:"700",
+                    background:hlRow===ri?rowColors[ri]:rowColors[ri]+"18",
+                    color:hlRow===ri?"#07090f":rowColors[ri],
+                    border:`2px solid ${rowColors[ri]}${hlRow===ri?"ff":"55"}`,
+                    transition:"all 0.2s",paddingLeft:"4px",textAlign:"left"}}>
+                  [i={ri}]<br/>{rowLabels[ri]}
+                </button>
+                {/* Cells */}
+                {row.map((val,ci)=>{
+                  const isHL=hlRow===ri;
+                  return (
+                    <div key={ci}
+                      style={{width:"58px",height:"40px",borderRadius:"7px",
+                        background:isHL?rowColors[ri]+"44":"#1f2937",
+                        border:`${isHL?2:1}px solid ${isHL?rowColors[ri]:"#374151"}`,
+                        display:"flex",alignItems:"center",justifyContent:"center",
+                        fontSize:"14px",fontWeight:"700",color:"white",transition:"all 0.2s"}}>
+                      {curr==="USD"?`$${val}`:`₽${val*rate}`}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+        {/* Row as vector display */}
+        {hlRow !== null && (
+          <div className="anim-r" style={{marginTop:"10px",background:"#07090f",borderRadius:"8px",
+            padding:"10px",border:`1px solid ${rowColors[hlRow]}66`,textAlign:"center"}}>
+            <div style={{fontSize:"12px",marginBottom:"4px"}}>
+              <Kd c={rowColors[hlRow]} ch={`price[${hlRow}]`}/>
+              <span style={{color:"#475569"}}> = вектор </span>
+              <Kd c="#fde047" ch={`[${price[hlRow].join(', ')}]`}/>
+            </div>
+            <div style={{fontSize:"10px",color:"#475569"}}>
+              → {rowLabels[hlRow]}: цена в {colLabels.join(', ')} — это ранг-1 тензор
+            </div>
+          </div>
+        )}
+        {/* Currency toggle */}
+        <div style={{display:"flex",gap:"6px",justifyContent:"center",marginTop:"10px"}}>
+          {["USD","RUB"].map(c=>(
+            <button key={c} className="btn" onClick={()=>setCurr(c)}
+              style={{padding:"4px 12px",borderRadius:"6px",fontSize:"11px",fontWeight:"700",
+                background:curr===c?"#3b82f6":"#3b82f622",color:curr===c?"white":"#60a5fa",
+                border:"1px solid #3b82f6",transition:"all 0.2s"}}>
+              {c}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ─ Vectors in store-space ─ */}
+      <div style={{background:"#07090f",border:"1px solid #1e293b",borderRadius:"10px",padding:"12px"}}>
+        <div style={{fontSize:"11px",color:"#60a5fa",fontWeight:"700",marginBottom:"6px"}}>
+          Строки матрицы как векторы в «пространстве магазинов»
+        </div>
+        <p style={{fontSize:"10px",color:"#64748b",lineHeight:"1.6",marginBottom:"10px"}}>
+          Ось X = цена в МагА, Ось Y = цена в МагБ.<br/>
+          Каждая строка матрицы — стрелка в этом пространстве.
+        </p>
+        <div style={{display:"flex",gap:"12px",alignItems:"flex-start",flexWrap:"wrap",justifyContent:"center"}}>
+          <svg width={W} height={H} style={{overflow:"visible",display:"block"}}>
+            <defs>{mkArr("mv1",rowColors[0])}{mkArr("mv2",rowColors[1])}</defs>
+            {[.25,.5,.75,1].map((t,i)=>(
+              <g key={i} opacity=".1">
+                <line x1={sx(t*maxV)} y1={pT} x2={sx(t*maxV)} y2={oy} stroke="white" strokeWidth=".7" strokeDasharray="3,3"/>
+                <line x1={ox} y1={sy(t*maxV)} x2={W-pR} y2={sy(t*maxV)} stroke="white" strokeWidth=".7" strokeDasharray="3,3"/>
+              </g>
+            ))}
+            <line x1={ox} y1={oy} x2={W-pR} y2={oy} stroke="#60a5fa88" strokeWidth="1.5"/>
+            <line x1={ox} y1={oy} x2={ox} y2={pT} stroke="#4ade8088" strokeWidth="1.5"/>
+            <polygon points={`${W-pR},${oy-3} ${W-pR},${oy+3} ${W-pR+5},${oy}`} fill="#60a5fa"/>
+            <polygon points={`${ox-3},${pT+4} ${ox+3},${pT+4} ${ox},${pT-2}`} fill="#4ade80"/>
+            <text x={W-pR+4} y={oy+12} fill="#60a5fa" fontSize="9" fontFamily="JetBrains Mono">МагА</text>
+            <text x={ox-5} y={pT-2} textAnchor="end" fill="#4ade80" fontSize="9" fontFamily="JetBrains Mono">МагБ</text>
+            {[.25,.5,.75].map((t,i)=>(
+              <g key={i}>
+                <text x={sx(t*maxV)} y={oy+11} textAnchor="middle" fill="#ffffff22" fontSize="7" fontFamily="JetBrains Mono">{Math.round(t*maxV*rate)}</text>
+                <text x={ox-4} y={sy(t*maxV)+3} textAnchor="end" fill="#ffffff22" fontSize="7" fontFamily="JetBrains Mono">{Math.round(t*maxV*rate)}</text>
+              </g>
+            ))}
+            {/* Angle arc - drawn correctly between the two vectors */}
+            {(()=>{
+              const vA={x:price[0][0],y:price[0][1]};
+              const vB={x:price[1][0],y:price[1][1]};
+              const aA=Math.atan2(vA.y,vA.x), aB=Math.atan2(vB.y,vB.x);
+              const R=30;
+              const ax1=ox+R*Math.cos(aA), ay1=oy-R*Math.sin(aA);
+              const ax2=ox+R*Math.cos(aB), ay2=oy-R*Math.sin(aB);
+              return (
+                <g>
+                  <path d={`M ${ax1.toFixed(1)} ${ay1.toFixed(1)} A ${R} ${R} 0 0 ${aA>aB?0:1} ${ax2.toFixed(1)} ${ay2.toFixed(1)}`}
+                    fill="none" stroke="#fde04766" strokeWidth="1.5"/>
+                  <text x={ox+R*1.5*Math.cos((aA+aB)/2)} y={oy-R*1.5*Math.sin((aA+aB)/2)+3}
+                    fill="#fde04799" fontSize="9" fontFamily="JetBrains Mono" textAnchor="middle">α</text>
+                </g>
+              );
+            })()}
+            {/* Vectors */}
+            {price.map((row,ri)=>(
+              <g key={ri}>
+                <line x1={ox} y1={oy} x2={sx(row[0])-1} y2={sy(row[1])+1}
+                  stroke={rowColors[ri]} strokeWidth="2.8" markerEnd={`url(#mv${ri+1})`}/>
+                <circle cx={sx(row[0])} cy={sy(row[1])} r="5" fill={rowColors[ri]}/>
+                <rect x={sx(row[0])+7} y={sy(row[1])-14} width="92" height="16" rx="3" fill="#07090fcc"/>
+                <text x={sx(row[0])+9} y={sy(row[1])-2} fill={rowColors[ri]} fontSize="9.5" fontFamily="JetBrains Mono" fontWeight="700">
+                  {rowLabels[ri]}: [{row[0]},{row[1]}]
+                </text>
+              </g>
+            ))}
+          </svg>
+          <div style={{display:"flex",flexDirection:"column",gap:"8px",minWidth:"120px"}}>
+            <div style={{background:"#1f2937",borderRadius:"8px",padding:"10px",border:"1px solid #374151",fontSize:"11px"}}>
+              <div style={{color:"#64748b",marginBottom:"4px",fontSize:"10px"}}>Угол α между векторами:</div>
+              <div style={{color:"#fde047",fontWeight:"700",fontSize:"14px"}}>{angleDeg}°</div>
+              <div style={{color:"#4ade80",fontSize:"9px",marginTop:"4px"}}>при {curr} тоже {angleDeg}°</div>
+              <div style={{color:"#475569",fontSize:"9px",marginTop:"4px",lineHeight:"1.5"}}>
+                Смена валюты = смена масштаба обеих осей. Угол сохраняется.
+              </div>
+            </div>
+            <div style={{fontSize:"10px",color:"#475569",lineHeight:"1.6",background:"#07090f",
+              borderRadius:"6px",padding:"8px",border:"1px solid #1e293b"}}>
+              <strong style={{color:"#60a5fa"}}>Матрица</strong> = конфигурация векторов.<br/>
+              Сами векторы = тензоры ранга 1.<br/>
+              Их таблица = тензор ранга 2.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style={{background:"#07090f",border:"1px solid #1e293b",borderRadius:"8px",padding:"10px",textAlign:"center",fontSize:"12px"}}>
+        <Kd c="#60a5fa" ch="price.shape = (2, 3)"/>
+        <span style={{color:"#475569"}}> — 2 оси, нужно 2 индекса: </span>
+        <Kd c="#fde047" ch="price[i, j]"/>
+      </div>
+    </div>
+  );
+};
+
+/* ══════════════ TAB: RANK 3 ══════════════ */
+const TabR3 = () => {
+  const [sel, setSel]     = React.useState(0);
+  const [expl, setExpl]   = React.useState(0);
+  const [rate, setRate]   = React.useState(100);
+
+  const priceUSD = [[10,20,15],[8,25,12]];
+  const cubeColors= ["#f59e0b","#ef4444","#3b82f6"];
+  const currencies= ["USD","RUB","EUR"];
+  const rowLabels = ["Яблоки","Кофе"];
+  const colLabels = ["МагА","МагБ","МагВ"];
+  const cubeData  = [priceUSD, priceUSD.map(r=>r.map(v=>v*rate)), priceUSD.map(r=>r.map(v=>Math.round(v*.92)))];
+
+  return (
+    <div className="anim-up" style={{maxWidth:"545px",margin:"0 auto",display:"flex",flexDirection:"column",gap:"14px"}}>
+      <div style={{background:"#a855f711",border:"2px solid #a855f744",borderRadius:"12px",padding:"14px"}}>
+        <div style={{display:"flex",gap:"8px",alignItems:"center",marginBottom:"8px"}}>
+          <Badge n="3" color="#a855f7"/>
+          <span style={{color:"#c084fc",fontWeight:"700",fontSize:"13px"}}>Куб — стопка матриц</span>
+        </div>
+        <p style={{fontSize:"12px",color:"#d1d5db",lineHeight:"1.7"}}>
+          Три индекса: <Kd c="#c084fc" ch="T[k, i, j]"/>.<br/>
+          Матрица цен: товары × магазины.<br/>
+          Добавляем <strong style={{color:"#fde047"}}>третью ось — валюта</strong> → куб.
+        </p>
+      </div>
+
+      {/* Cube */}
+      <div style={{background:"#07090f",border:"1px solid #1e293b",borderRadius:"10px",padding:"14px",
+        display:"flex",flexDirection:"column",alignItems:"center",gap:"12px"}}>
+        <div style={{fontSize:"10px",color:"#475569",textAlign:"center"}}>Кликни на слой · Ползунок = раздвинуть</div>
+        <div style={{display:"flex",gap:"14px",alignItems:"flex-start",flexWrap:"wrap",justifyContent:"center"}}>
+          <CubeISO layers={cubeData} layerColors={cubeColors} layerNames={["USD","RUB","EUR"]}
+            selected={sel} onSelect={setSel} explode={expl}/>
+          <div style={{display:"flex",flexDirection:"column",gap:"8px",minWidth:"110px"}}>
+            {currencies.map((c,i)=>(
+              <button key={i} className="btn" onClick={()=>setSel(i)}
+                style={{padding:"7px 12px",borderRadius:"7px",fontSize:"11px",fontWeight:"700",
+                  background:sel===i?cubeColors[i]:cubeColors[i]+"22",
+                  color:sel===i?"#07090f":cubeColors[i],
+                  border:`2px solid ${cubeColors[i]}`,transition:"all 0.2s",
+                  boxShadow:sel===i?`0 0 10px ${cubeColors[i]}55`:"none"}}>
+                {c} — слой {i}
+              </button>
+            ))}
+            <div style={{marginTop:"4px"}}>
+              <div style={{fontSize:"9px",color:"#475569",marginBottom:"3px"}}>Раздвинуть: {expl}px</div>
+              <input type="range" min="0" max="42" value={expl} onChange={e=>setExpl(+e.target.value)}
+                style={{width:"100%",accentColor:"#a855f7"}}/>
+            </div>
+          </div>
+        </div>
+        {/* Selected matrix */}
+        <div style={{background:cubeColors[sel]+"0d",border:`1px solid ${cubeColors[sel]}44`,
+          borderRadius:"8px",padding:"10px",width:"100%",maxWidth:"380px"}}>
+          <div style={{fontSize:"10px",color:cubeColors[sel],fontWeight:"700",textAlign:"center",marginBottom:"7px"}}>
+            price[{sel}] — матрица в {currencies[sel]}:
+          </div>
+          <div style={{display:"flex",justifyContent:"center"}}>
+            <div>
+              <div style={{display:"flex",marginLeft:"54px",marginBottom:"3px"}}>
+                {colLabels.map((l,ci)=>(<div key={ci} style={{width:"52px",textAlign:"center",fontSize:"9px",color:cubeColors[sel],fontWeight:"600"}}>{l}</div>))}
+              </div>
+              <div style={{display:"flex",gap:"4px"}}>
+                <div style={{display:"flex",flexDirection:"column",justifyContent:"space-around",width:"50px"}}>
+                  {rowLabels.map((l,ri)=>(<div key={ri} style={{height:"30px",display:"flex",alignItems:"center",justifyContent:"flex-end",paddingRight:"4px",fontSize:"9px",color:"#94a3b8",fontWeight:"600"}}>{l}</div>))}
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(3,52px)",gap:"2px",border:`2px solid ${cubeColors[sel]}44`,padding:"3px",borderRadius:"6px"}}>
+                  {cubeData[sel].map((row,ri)=>row.map((val,ci)=>(
+                    <div key={`${ri}-${ci}`} style={{height:"30px",background:cubeColors[sel]+"33",borderRadius:"4px",
+                      display:"flex",alignItems:"center",justifyContent:"center",fontSize:"11px",fontWeight:"700",color:"white",transition:"all .3s"}}>{val}</div>
+                  )))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Basis change demo */}
+      <div style={{background:"#a855f70a",border:"2px solid #a855f766",borderRadius:"12px",padding:"14px"}}>
+        <div style={{fontSize:"12px",color:"#c084fc",fontWeight:"700",marginBottom:"8px"}}>
+          🔑 Смени базис — тензор остаётся тем же объектом
+        </div>
+        <p style={{fontSize:"11px",color:"#94a3b8",lineHeight:"1.6",marginBottom:"12px"}}>
+          Двигай ползунок — числа в слое RUB меняются.<br/>
+          <strong style={{color:"#fde047"}}>Shape (3,2,3) не меняется.</strong> Отношения не меняются.
+          Это и есть тензор.
+        </p>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"8px"}}>
+          <div style={{fontSize:"11px",color:"#94a3b8"}}>1 USD = <strong style={{color:"#fde047"}}>{rate}</strong> RUB</div>
+          <input type="range" min="50" max="200" step="5" value={rate} onChange={e=>setRate(+e.target.value)}
+            style={{width:"140px",accentColor:"#ef4444"}}/>
+        </div>
+        <div style={{display:"flex",gap:"8px",justifyContent:"center",flexWrap:"wrap"}}>
+          {[{k:0,c:"#f59e0b",lbl:"USD"},{k:1,c:"#ef4444",lbl:`RUB ×${rate}`}].map(({k,c,lbl})=>(
+            <div key={k}>
+              <div style={{fontSize:"9px",color:c,textAlign:"center",marginBottom:"3px",fontWeight:"700"}}>{lbl}</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(3,44px)",gap:"2px",border:`1px solid ${c}44`,padding:"3px",borderRadius:"6px",background:c+"08"}}>
+                {cubeData[k].map((row,ri)=>row.map((val,ci)=>(
+                  <div key={`${ri}-${ci}`} style={{height:"24px",background:c+"22",borderRadius:"3px",
+                    display:"flex",alignItems:"center",justifyContent:"center",fontSize:"10px",fontWeight:"700",color:"white",transition:"all .3s"}}>{val}</div>
+                )))}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{marginTop:"10px",display:"flex",gap:"10px",flexWrap:"wrap",justifyContent:"center"}}>
+          {[{l:"shape",v:"(3, 2, 3)",c:"#c084fc",ok:true},{l:"RUB числа",v:`×${rate}`,c:"#ef4444",ok:false},{l:"кофе > яблок",v:"✓",c:"#4ade80",ok:true}].map(x=>(
+            <div key={x.l} style={{display:"flex",gap:"5px",alignItems:"center"}}>
+              <div style={{width:"7px",height:"7px",borderRadius:"50%",background:x.ok?"#4ade80":"#ef4444"}}/>
+              <span style={{fontSize:"10px",color:"#94a3b8"}}>{x.l}:</span>
+              <span style={{fontSize:"10px",fontWeight:"700",color:x.c}}>{x.v}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{background:"#07090f",border:"1px solid #1e293b",borderRadius:"8px",padding:"10px",textAlign:"center",fontSize:"12px"}}>
+        <Kd c="#c084fc" ch="price.shape = (3, 2, 3)"/>
+        <span style={{color:"#475569"}}> — 3 оси: </span>
+        <Kd c="#fde047" ch="price[k, i, j]"/>
+      </div>
+    </div>
+  );
+};
+
+/* ══════════════ TAB: RANK 4 ══════════════ */
+const TabR4 = () => {
+  // Progressive ranks - built as a scrollable strip
+  const rCol=["#f59e0b","#10b981","#3b82f6","#a855f7","#06b6d4"];
+  const items=[
+    {r:0,n:"Ранг 0",s:"()",     desc:"Точка"},
+    {r:1,n:"Ранг 1",s:"(N,)",   desc:"Строка"},
+    {r:2,n:"Ранг 2",s:"(N,M)",  desc:"Таблица"},
+    {r:3,n:"Ранг 3",s:"(N,M,K)",desc:"Куб"},
+    {r:4,n:"Ранг 4",s:"(B,N,M,K)",desc:"Батч"},
+  ];
+
+  const [bSel, setBSel] = React.useState(0);
+  const B=4;
+
+  // Mini isometric batch illustration
+  const BatchMini = ({selected,onSelect}) => {
+    const CW=18,CD=12,CH=5,C2=3,H2=4,W2=5;
+    const bGap=82;
+    const draws=[];
+    const cColors=["#ef4444","#22c55e","#3b82f6"];
+    for(let b=0;b<B;b++){
+      const ox2=22+b*bGap, oy2=120;
+      const isSel=b===selected;
+      const prj2=(wx,wy,wz)=>iso(wx,wy,wz,ox2,oy2);
+      for(let c=0;c<C2;c++){
+        const bY2=c*(CH+2),tY2=bY2+CH,col=cColors[c],TW2=W2*CW,TD2=H2*CD;
+        const a=isSel?1:0.5;
+        draws.push({b,z:bY2-100+b*.01,render:()=>(
+          <polygon key={`f${b}${c}`} points={pts2s([prj2(0,bY2,0),prj2(TW2,bY2,0),prj2(TW2,tY2,0),prj2(0,tY2,0)])}
+            fill={hx(col,a*.35)} stroke={hx(col,a*.9)} strokeWidth={isSel?1:.4} style={{cursor:"pointer"}} onClick={()=>onSelect(b)}/>
+        )});
+        draws.push({b,z:bY2-99+b*.01,render:()=>(
+          <polygon key={`r${b}${c}`} points={pts2s([prj2(TW2,bY2,0),prj2(TW2,bY2,TD2),prj2(TW2,tY2,TD2),prj2(TW2,tY2,0)])}
+            fill={hx(col,a*.22)} stroke={hx(col,a*.9)} strokeWidth={isSel?1:.4} style={{cursor:"pointer"}} onClick={()=>onSelect(b)}/>
+        )});
+        for(let h=0;h<H2;h++) for(let w=0;w<W2;w++){
+          const cp=[prj2(w*CW,tY2,h*CD),prj2((w+1)*CW,tY2,h*CD),prj2((w+1)*CW,tY2,(h+1)*CD),prj2(w*CW,tY2,(h+1)*CD)];
+          draws.push({b,z:tY2+h*.01+w*.001,render:()=>(
+            <polygon key={`p${b}${c}${h}${w}`} points={pts2s(cp)}
+              fill={hx(col,a*.55)} stroke={hx(col,a*.6)} strokeWidth=".3" style={{cursor:"pointer"}} onClick={()=>onSelect(b)}/>
+          )});
+        }
+      }
+      const lp=prj2(W2*CW/2,0,H2*CD/2);
+      draws.push({b,z:200,render:()=>(
+        <text key={`lbl${b}`} x={lp.x} y={lp.y+16} textAnchor="middle"
+          fill={isSel?"#06b6d4":"#475569"} fontSize="10" fontFamily="JetBrains Mono" fontWeight={isSel?"700":"400"}
+          style={{cursor:"pointer"}} onClick={()=>onSelect(b)}>[{b}]</text>
+      )});
+    }
+    draws.sort((a,b2)=>a.z-b2.z);
+    return (
+      <svg width={360} height={145} style={{overflow:"visible",display:"block",maxWidth:"100%"}}>
+        {draws.map(d=>d.render())}
+        <text x="180" y="138" textAnchor="middle" fill="#06b6d455" fontSize="9" fontFamily="JetBrains Mono">← batch (B={B} изображения) →</text>
+      </svg>
+    );
+  };
+
+  return (
+    <div className="anim-up" style={{maxWidth:"545px",margin:"0 auto",display:"flex",flexDirection:"column",gap:"14px"}}>
+      <div style={{background:"#06b6d411",border:"2px solid #06b6d444",borderRadius:"12px",padding:"14px"}}>
+        <div style={{display:"flex",gap:"8px",alignItems:"center",marginBottom:"8px"}}>
+          <Badge n="4" color="#06b6d4"/>
+          <span style={{color:"#22d3ee",fontWeight:"700",fontSize:"13px"}}>Батч — стопка кубов</span>
+        </div>
+        <p style={{fontSize:"12px",color:"#d1d5db",lineHeight:"1.7"}}>
+          Четыре индекса: <Kd c="#22d3ee" ch="T[b, c, h, w]"/>.<br/>
+          В Deep Learning обрабатываем несколько изображений сразу — <strong style={{color:"#fde047"}}>батч</strong>.<br/>
+          Батч = стопка кубов → ранг 4.
+        </p>
+      </div>
+
+      {/* Progressive strip */}
+      <div style={{background:"#07090f",border:"1px solid #1e293b",borderRadius:"10px",padding:"12px"}}>
+        <div style={{fontSize:"11px",color:"#22d3ee",fontWeight:"700",textAlign:"center",marginBottom:"10px"}}>
+          Эволюция: ранг 0 → ранг 4
+        </div>
+        <div style={{overflowX:"auto",paddingBottom:"6px"}}>
+          <div style={{display:"flex",gap:"6px",alignItems:"stretch",minWidth:"max-content",padding:"4px"}}>
+            {items.map((x,i)=>(
+              <React.Fragment key={i}>
+                <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"6px",
+                  background:rCol[x.r]+(x.r===4?"18":"0a"),border:`1px solid ${rCol[x.r]}${x.r===4?"55":"22"}`,
+                  borderRadius:"10px",padding:"10px 10px 8px",minWidth:"80px"}}>
+                  <Badge n={x.r} color={rCol[x.r]}/>
+                  {/* Mini shape illustration */}
+                  <div style={{height:"48px",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    {x.r===0 && <div style={{width:"16px",height:"16px",borderRadius:"50%",background:rCol[0]}}/>}
+                    {x.r===1 && (
+                      <div style={{display:"flex",gap:"3px"}}>
+                        {[0,1,2,3].map(i=>(<div key={i} style={{width:"12px",height:"12px",borderRadius:"3px",background:rCol[1]+"55",border:`1px solid ${rCol[1]}`}}/>))}
+                      </div>
+                    )}
+                    {x.r===2 && (
+                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"2px"}}>
+                        {Array.from({length:9}).map((_,i)=>(<div key={i} style={{width:"12px",height:"12px",borderRadius:"2px",background:rCol[2]+"55",border:`1px solid ${rCol[2]}`,opacity:.5+i*.06}}/>))}
+                      </div>
+                    )}
+                    {x.r===3 && (
+                      <svg width="52" height="44" style={{overflow:"visible"}}>
+                        {[2,1,0].map(k=>{
+                          const ox2=10+k*3,oy2=36-k*6;
+                          return [0,1].map(ri=>[0,1,2].map(ci=>{
+                            const p=(wx,wy,wz)=>iso(wx,wy,wz,ox2,oy2);
+                            const sx2=ci*10,ex=(ci+1)*10,sz=ri*8,ez=(ri+1)*8;
+                            return(<polygon key={`${k}${ri}${ci}`}
+                              points={pts2s([p(sx2,8,sz),p(ex,8,sz),p(ex,8,ez),p(sx2,8,ez)])}
+                              fill={hx(rCol[3],.45)} stroke={hx(rCol[3],.8)} strokeWidth=".6"/>);
+                          }));
+                        })}
+                      </svg>
+                    )}
+                    {x.r===4 && (
+                      <div style={{display:"flex",gap:"3px"}}>
+                        {[0,1,2].map(b=>(
+                          <svg key={b} width="18" height="32" style={{overflow:"visible"}}>
+                            {[2,1,0].map(k=>{
+                              const ox2=4+k*2,oy2=28-k*4;
+                              return(<polygon key={k}
+                                points={pts2s([iso(0,6,0,ox2,oy2),iso(12,6,0,ox2,oy2),iso(12,6,8,ox2,oy2),iso(0,6,8,ox2,oy2)])}
+                                fill={hx(rCol[4],.35)} stroke={hx(rCol[4],.8)} strokeWidth=".5"/>);
+                            })}
+                          </svg>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{fontSize:"10px",fontWeight:"700",color:rCol[x.r]}}>{x.n}</div>
+                  <div style={{fontSize:"8px",color:rCol[x.r]+"88"}}>{x.s}</div>
+                  <div style={{fontSize:"8.5px",color:"#475569"}}>{x.desc}</div>
+                </div>
+                {i<items.length-1 && (
+                  <div style={{display:"flex",alignItems:"center",color:"#374151",fontSize:"18px",paddingBottom:"10px"}}>→</div>
+                )}
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Batch visual */}
+      <div style={{background:"#07090f",border:"1px solid #1e293b",borderRadius:"10px",padding:"12px"}}>
+        <div style={{fontSize:"11px",color:"#22d3ee",fontWeight:"700",marginBottom:"4px"}}>
+          images.shape = (4, 3, 64, 64)
+        </div>
+        <div style={{fontSize:"10px",color:"#475569",marginBottom:"12px"}}>
+          Кликни на изображение в батче
+        </div>
+        <div style={{display:"flex",justifyContent:"center",overflowX:"auto"}}>
+          <BatchMini selected={bSel} onSelect={setBSel}/>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"6px",marginTop:"10px"}}>
+          {[
+            {idx:"B",desc:"batch — сколько изображений",ex:"4",c:"#06b6d4"},
+            {idx:"C",desc:"channels — RGB каналы",       ex:"3",c:"#ef4444"},
+            {idx:"H",desc:"height — высота пикселей",    ex:"64",c:"#4ade80"},
+            {idx:"W",desc:"width  — ширина пикселей",    ex:"64",c:"#60a5fa"},
+          ].map(x=>(
+            <div key={x.idx} style={{background:x.c+"0a",border:`1px solid ${x.c}28`,borderRadius:"8px",padding:"8px"}}>
+              <div style={{display:"flex",gap:"6px",alignItems:"center",marginBottom:"2px"}}>
+                <span style={{fontSize:"15px",fontWeight:"700",color:x.c}}>{x.idx}</span>
+                <span style={{fontSize:"17px",fontWeight:"700",color:"#fde047"}}>{x.ex}</span>
+              </div>
+              <div style={{fontSize:"9px",color:"#64748b"}}>{x.desc}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <Card color="#06b6d4">
+        <div style={{fontSize:"12px",color:"#d1d5db",lineHeight:"1.9"}}>
+          <Kd c="#22d3ee" ch="images[b]"/><span style={{color:"#475569",fontSize:"11px"}}> → одно изображение (ранг-3 тензор)</span><br/>
+          <Kd c="#22d3ee" ch="images[b, c]"/><span style={{color:"#475569",fontSize:"11px"}}> → один канал (матрица H×W)</span><br/>
+          <Kd c="#22d3ee" ch="images[b, c, h]"/><span style={{color:"#475569",fontSize:"11px"}}> → одна строка (вектор)</span><br/>
+          <Kd c="#22d3ee" ch="images[b, c, h, w]"/><span style={{color:"#475569",fontSize:"11px"}}> → одно число</span>
+        </div>
+      </Card>
+    </div>
+  );
+};
+
+/* ══════════════ TAB: ТЕНЗОР ≠ ФОРМА ══════════════ */
+const TabRepr = () => {
+  const [view, setView] = React.useState("hwc");
+  const [step, setStep] = React.useState(0);
+
+  // 2×2 image: 4 pixels with colors
+  const pixels = [
+    {name:"(0,0)",color:"#ef4444",rgb:[255,0,0],  label:"Красный"},
+    {name:"(0,1)",color:"#22c55e",rgb:[0,255,0],  label:"Зелёный"},
+    {name:"(1,0)",color:"#3b82f6",rgb:[0,0,255],  label:"Синий"},
+    {name:"(1,1)",color:"#eab308",rgb:[255,255,0], label:"Жёлтый"},
+  ];
+
+  // Shape (2,2,3): [H][W][C]
+  const hwc = [
+    [[255,0,0],[0,255,0]],
+    [[0,0,255],[255,255,0]],
+  ];
+  // Shape (3,2,2): [C][H][W]
+  const chw = [
+    [[255,0],[0,255]],  // R
+    [[0,255],[0,255]],  // G
+    [[0,0],[255,0]],    // B
+  ];
+  const channelColors=["#ef4444","#22c55e","#3b82f6"];
+  const channelLabels=["R","G","B"];
+
+  return (
+    <div className="anim-up" style={{maxWidth:"520px",margin:"0 auto",display:"flex",flexDirection:"column",gap:"14px"}}>
+
+      {/* ─ Core question ─ */}
+      <div style={{background:"linear-gradient(135deg,#00231a,#00153b)",border:"2px solid #10b98166",
+        borderRadius:"14px",padding:"16px"}}>
+        <div style={{fontSize:"13px",fontWeight:"700",color:"#34d399",marginBottom:"10px"}}>
+          🔄 Тензор vs Форма — самый частый источник путаницы
+        </div>
+        <div style={{display:"flex",gap:"8px",alignItems:"flex-start",flexDirection:"column",fontSize:"12px",lineHeight:"1.8",color:"#d1d5db"}}>
+          <div style={{background:"#ef444411",border:"1px solid #ef444440",borderRadius:"8px",padding:"8px 12px",width:"100%"}}>
+            <Kd c="#fde047" ch="[[[255,0,0],[0,255,0]],[[0,0,255],[255,255,0]]]"/>
+            <div style={{color:"#94a3b8",fontSize:"10px",marginTop:"3px"}}>shape (2, 2, 3) — организовано как [H][W][C]</div>
+          </div>
+          <div style={{textAlign:"center",width:"100%",color:"#10b981",fontSize:"20px"}}>⇄</div>
+          <div style={{background:"#3b82f611",border:"1px solid #3b82f640",borderRadius:"8px",padding:"8px 12px",width:"100%"}}>
+            <Kd c="#22d3ee" ch="[[[255,0],[0,255]],[[0,255],[0,255]],[[0,0],[255,0]]]"/>
+            <div style={{color:"#94a3b8",fontSize:"10px",marginTop:"3px"}}>shape (3, 2, 2) — организовано как [C][H][W]</div>
+          </div>
+          <div style={{background:"#4ade8011",border:"1px solid #4ade8033",borderRadius:"8px",padding:"8px 12px",width:"100%",textAlign:"center"}}>
+            <strong style={{color:"#4ade80"}}>Это ОДИН И ТОТ ЖЕ тензор — 12 одинаковых чисел</strong><br/>
+            <span style={{fontSize:"10px",color:"#64748b"}}>Только организованы по-разному в памяти</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ─ The image: what are the 12 numbers ─ */}
+      <div style={{background:"#07090f",border:"1px solid #1e293b",borderRadius:"10px",padding:"12px"}}>
+        <div style={{fontSize:"11px",color:"#fde047",fontWeight:"700",marginBottom:"10px"}}>
+          🖼 Что за 12 чисел? — 2×2 пикселей, каждый = [R,G,B]
+        </div>
+        <div style={{display:"flex",gap:"14px",alignItems:"flex-start",flexWrap:"wrap",justifyContent:"center"}}>
+          {/* Pixel grid */}
+          <div style={{display:"flex",flexDirection:"column",gap:"6px",alignItems:"center"}}>
+            <div style={{fontSize:"9px",color:"#475569",marginBottom:"2px"}}>Изображение</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"4px"}}>
+              {pixels.map((p,i)=>(
+                <div key={i} style={{width:"64px",height:"64px",borderRadius:"8px",
+                  background:p.color,display:"flex",flexDirection:"column",
+                  alignItems:"center",justifyContent:"center",border:"2px solid white22"}}>
+                  <span style={{fontSize:"9px",color:"white",fontWeight:"700",textShadow:"0 1px 3px #000"}}>{p.name}</span>
+                  <span style={{fontSize:"8px",color:"white",textShadow:"0 1px 3px #000",opacity:.8}}>{p.label}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{fontSize:"9px",color:"#475569",textAlign:"center"}}>2 строки × 2 столбца</div>
+          </div>
+          {/* RGB breakdown */}
+          <div style={{flex:1,minWidth:"160px"}}>
+            <div style={{fontSize:"9px",color:"#475569",marginBottom:"6px"}}>Каждый пиксель = [R, G, B]</div>
+            {pixels.map((p,i)=>(
+              <div key={i} style={{display:"flex",gap:"6px",alignItems:"center",marginBottom:"5px"}}>
+                <div style={{width:"16px",height:"16px",borderRadius:"3px",background:p.color,flexShrink:0,border:"1px solid #ffffff33"}}/>
+                <span style={{fontSize:"10px",color:"#94a3b8",width:"32px"}}>{p.name}</span>
+                <div style={{display:"flex",gap:"3px"}}>
+                  {p.rgb.map((v,j)=>(
+                    <div key={j} style={{width:"34px",height:"22px",borderRadius:"4px",
+                      background:[`#ef444433`,`#22c55e33`,`#3b82f633`][j],
+                      border:`1px solid ${["#ef4444","#22c55e","#3b82f6"][j]}55`,
+                      display:"flex",alignItems:"center",justifyContent:"center",
+                      fontSize:"10px",fontWeight:"700",color:["#fca5a5","#86efac","#93c5fd"][j]}}>
+                      {v}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div style={{marginTop:"10px",textAlign:"center",fontSize:"11px",color:"#64748b"}}>
+          Итого: 4 пикселя × 3 канала = <strong style={{color:"#fde047"}}>12 чисел</strong>
+        </div>
+      </div>
+
+      {/* ─ Two representations side by side ─ */}
+      <div style={{fontSize:"11px",color:"#94a3b8",textAlign:"center",marginBottom:"-6px"}}>
+        Выбери способ организации этих 12 чисел в памяти:
+      </div>
+      <div style={{display:"flex",gap:"6px",justifyContent:"center"}}>
+        {[{id:"hwc",l:"(H, W, C)  — NumPy/TF/PIL",c:"#fde047"},{id:"chw",l:"(C, H, W)  — PyTorch",c:"#22d3ee"}].map(x=>(
+          <button key={x.id} className="btn" onClick={()=>setView(x.id)}
+            style={{flex:1,padding:"8px",borderRadius:"8px",fontSize:"11px",fontWeight:"700",
+              background:view===x.id?x.c+"22":"transparent",color:x.c,
+              border:`2px solid ${x.c}${view===x.id?"99":"33"}`,transition:"all 0.2s"}}>
+            {x.l}
+          </button>
+        ))}
+      </div>
+
+      {view==="hwc" && (
+        <div className="anim-r" style={{background:"#fde04708",border:"1px solid #fde04733",borderRadius:"10px",padding:"12px"}}>
+          <div style={{fontSize:"11px",fontWeight:"700",color:"#fde047",marginBottom:"8px"}}>
+            shape = (2, 2, 3) — организация [строка][столбец][канал]
+          </div>
+          <div style={{fontFamily:"JetBrains Mono",fontSize:"10px",color:"#d1d5db",lineHeight:"2.0",
+            background:"#07090f",borderRadius:"8px",padding:"10px",border:"1px solid #1e293b",marginBottom:"10px"}}>
+            {`image[0][0] = [`}<span style={{color:"#fca5a5"}}>255</span>, <span style={{color:"#86efac"}}>0</span>, <span style={{color:"#93c5fd"}}>0</span>]  {` ← красный (0,0)`}<br/>
+            {`image[0][1] = [`}<span style={{color:"#fca5a5"}}>0</span>, <span style={{color:"#86efac"}}>255</span>, <span style={{color:"#93c5fd"}}>0</span>]   {` ← зелёный (0,1)`}<br/>
+            {`image[1][0] = [`}<span style={{color:"#fca5a5"}}>0</span>, <span style={{color:"#86efac"}}>0</span>, <span style={{color:"#93c5fd"}}>255</span>]  {` ← синий (1,0)`}<br/>
+            {`image[1][1] = [`}<span style={{color:"#fca5a5"}}>255</span>, <span style={{color:"#86efac"}}>255</span>, <span style={{color:"#93c5fd"}}>0</span>]  {` ← жёлтый (1,1)`}
+          </div>
+          {/* Visual grid */}
+          <div style={{display:"flex",gap:"8px",alignItems:"flex-start",flexWrap:"wrap"}}>
+            <div>
+              <div style={{fontSize:"9px",color:"#475569",marginBottom:"4px",textAlign:"center"}}>Матрица строк</div>
+              {hwc.map((row,ri)=>(
+                <div key={ri} style={{display:"flex",gap:"3px",marginBottom:"3px"}}>
+                  <div style={{width:"22px",fontSize:"9px",color:"#4ade80",display:"flex",alignItems:"center"}}>[{ri}]</div>
+                  {row.map((px,ci)=>(
+                    <div key={ci} style={{background:`rgb(${px[0]},${px[1]},${px[2]})`,
+                      width:"42px",height:"32px",borderRadius:"5px",
+                      display:"flex",alignItems:"center",justifyContent:"center",
+                      border:"1px solid #ffffff22",fontSize:"7.5px",color:"white",textShadow:"0 1px 3px #000",fontWeight:"700"}}>
+                      [{px.join(',')}]
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+            <div style={{flex:1,minWidth:"150px",fontSize:"10px",color:"#94a3b8",lineHeight:"1.7"}}>
+              <strong style={{color:"#4ade80"}}>plt.imshow(image)</strong> — работает!<br/>
+              matplotlib видит (H=2, W=2, C=3) → понимает как изображение<br/>
+              <br/>
+              <span style={{color:"#64748b",fontSize:"9px"}}>
+                image[i, j] → один пиксель [R,G,B]<br/>
+                image[i, j, 0] → R-компонента пикселя
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {view==="chw" && (
+        <div className="anim-r" style={{background:"#22d3ee08",border:"1px solid #22d3ee33",borderRadius:"10px",padding:"12px"}}>
+          <div style={{fontSize:"11px",fontWeight:"700",color:"#22d3ee",marginBottom:"8px"}}>
+            shape = (3, 2, 2) — организация [канал][строка][столбец]
+          </div>
+          <div style={{fontFamily:"JetBrains Mono",fontSize:"10px",color:"#d1d5db",lineHeight:"2.0",
+            background:"#07090f",borderRadius:"8px",padding:"10px",border:"1px solid #1e293b",marginBottom:"10px"}}>
+            {`image[0] = R-канал:`}<br/>
+            &nbsp;&nbsp;[<span style={{color:"#fca5a5"}}>255</span>, <span style={{color:"#fca5a5"}}>0</span>]  &nbsp;← R пикселей строки 0<br/>
+            &nbsp;&nbsp;[<span style={{color:"#fca5a5"}}>0</span>, <span style={{color:"#fca5a5"}}>255</span>]  &nbsp;← R пикселей строки 1<br/>
+            {`image[1] = G-канал, image[2] = B-канал...`}
+          </div>
+          {/* Channel display */}
+          <div style={{display:"flex",gap:"8px",flexWrap:"wrap",justifyContent:"center",marginBottom:"10px"}}>
+            {chw.map((channel,ci)=>(
+              <div key={ci} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"4px"}}>
+                <div style={{fontSize:"9px",fontWeight:"700",color:channelColors[ci]}}>image[{ci}] = {channelLabels[ci]}</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"2px",
+                  border:`2px solid ${channelColors[ci]}55`,padding:"3px",borderRadius:"6px",
+                  background:channelColors[ci]+"0a"}}>
+                  {channel.flat().map((v,i)=>(
+                    <div key={i} style={{width:"30px",height:"24px",borderRadius:"4px",
+                      background:channelColors[ci],opacity:v>0?.85:.2,
+                      display:"flex",alignItems:"center",justifyContent:"center",
+                      fontSize:"9px",color:"white",fontWeight:"700",textShadow:"0 1px 2px #000"}}>{v}</div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{fontSize:"10px",color:"#94a3b8",lineHeight:"1.7"}}>
+            <strong style={{color:"#ef4444"}}>plt.imshow(image)</strong> — <span style={{color:"#ef4444"}}>НЕ работает как ожидаешь!</span><br/>
+            matplotlib видит (3, 2, 2) = 3 строки по 2 элемента → не понимает как одно изображение<br/>
+            <br/>
+            <strong style={{color:"#4ade80"}}>plt.imshow(image.transpose(1,2,0))</strong> — работает!<br/>
+            <span style={{color:"#64748b",fontSize:"9px"}}>transpose переставляет оси: (3,2,2) → (2,2,3)</span>
+          </div>
+        </div>
+      )}
+
+      {/* ─ THE KEY INSIGHT ─ */}
+      <div style={{background:"linear-gradient(135deg,#00231a,#00153b)",border:"2px solid #4ade8055",
+        borderRadius:"12px",padding:"14px"}}>
+        <div style={{fontSize:"13px",fontWeight:"700",color:"#4ade80",marginBottom:"10px"}}>
+          💡 Главный вывод
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:"8px",fontSize:"12px"}}>
+          {[
+            {icon:"✅",t:"Тензор = сами данные (12 чисел, описывающих 4 пикселя)",c:"#4ade80"},
+            {icon:"✅",t:"Форма (shape) = способ организации в памяти [(2,2,3) или (3,2,2)]",c:"#4ade80"},
+            {icon:"✅",t:"Транспозиция меняет форму, НЕ меняет тензор",c:"#22d3ee"},
+            {icon:"✅",t:"plt.imshow требует (H,W,C) — это соглашение библиотеки, не свойство тензора",c:"#fbbf24"},
+            {icon:"⚠️",t:"«Форма изменилась» ≠ «другой тензор»",c:"#f87171"},
+          ].map((x,i)=>(
+            <div key={i} style={{display:"flex",gap:"8px",alignItems:"flex-start"}}>
+              <span style={{fontSize:"14px",flexShrink:0}}>{x.icon}</span>
+              <span style={{color:"#d1d5db",lineHeight:"1.5"}}>{x.t}</span>
+            </div>
+          ))}
+        </div>
+        <div style={{marginTop:"12px",background:"#07090f",borderRadius:"8px",padding:"10px",
+          border:"1px solid #1e293b",fontSize:"11px",fontFamily:"JetBrains Mono",color:"#94a3b8",lineHeight:"1.9"}}>
+          <span style={{color:"#64748b"}}># Один тензор — два способа хранить:</span><br/>
+          <Kd c="#fde047" ch="hwc = np.array(image)          # shape (2,2,3)"/><br/>
+          <Kd c="#22d3ee" ch="chw = np.transpose(hwc,(2,0,1)) # shape (3,2,2)"/><br/>
+          <Kd c="#4ade80" ch="np.allclose(np.transpose(chw,(1,2,0)), hwc)  # True!"/>
+        </div>
+      </div>
+
+      {/* ─ Array vs Tensor ─ */}
+      <div style={{background:"#07090f",border:"1px solid #1e293b",borderRadius:"10px",padding:"12px"}}>
+        <div style={{fontSize:"11px",fontWeight:"700",color:"#94a3b8",marginBottom:"10px"}}>Массив vs Тензор — точное разграничение</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px"}}>
+          {[
+            {title:"Тензор",items:["Математический объект","Существует независимо","Описывает реальность","Инвариантен к базису"],c:"#a855f7"},
+            {title:"NumPy массив",items:["Представление в памяти","Конкретная форма (shape)","Конкретный порядок осей","Зависит от соглашения"],c:"#06b6d4"},
+          ].map(x=>(
+            <div key={x.title} style={{background:x.c+"0a",border:`1px solid ${x.c}33`,borderRadius:"8px",padding:"10px"}}>
+              <div style={{fontSize:"11px",fontWeight:"700",color:x.c,marginBottom:"6px"}}>{x.title}</div>
+              {x.items.map((it,i)=>(
+                <div key={i} style={{display:"flex",gap:"5px",fontSize:"10px",color:"#94a3b8",marginBottom:"4px",lineHeight:"1.4"}}>
+                  <span style={{color:x.c}}>•</span>{it}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ══════════════ MAIN APP ══════════════ */
 function App() {
-  const [tab, setTab]         = React.useState("intro");
+  const [tab,       setTab]       = React.useState("dict");
   const [axisAngle, setAxisAngle] = React.useState(0);
-  const [spinning, setSpinning]   = React.useState(false);
-  const [hlCell, setHlCell]       = React.useState(null);
-  const [cubeLayer, setCubeLayer] = React.useState(0);
-  const [step, setStep]           = React.useState(0); // substep within tab
+  const [spinning,  setSpinning]  = React.useState(false);
   const spinRef = React.useRef(null);
 
   const startSpin = () => {
-    if(spinning) { clearInterval(spinRef.current); setSpinning(false); return; }
+    if(spinning){ clearInterval(spinRef.current); setSpinning(false); return; }
     setSpinning(true);
-    spinRef.current = setInterval(()=>setAxisAngle(a=>(a+2)%360), 40);
+    spinRef.current = setInterval(()=>setAxisAngle(a=>(a+2)%360),40);
   };
   React.useEffect(()=>()=>clearInterval(spinRef.current),[]);
-
-  // price matrix data (Товары × Валюты)
-  const priceUSD = [[10, 20, 15], [8, 25, 12]];
-  const priceRUB = [[1000, 2000, 1500], [800, 2500, 1200]];
-  const priceEUR = [[9, 18, 14], [7, 23, 11]];
-  const rowLabels  = ["Яблоки (кг)","Кофе (кг)"];
-  const colLabels  = ["Магазин A","Магазин B","Магазин C"];
-  const currencies = ["USD","RUB","EUR"];
-  const cubeData   = [priceUSD, priceRUB, priceEUR];
-  const cubeColors = ["#f59e0b","#ef4444","#3b82f6"];
-
-  const tabs = [
-    {id:"intro", label:"🧩 Что такое тензор?"},
-    {id:"r0",    label:"Ранг 0 — Скаляр"},
-    {id:"r1",    label:"Ранг 1 — Вектор"},
-    {id:"r2",    label:"Ранг 2 — Матрица"},
-    {id:"r3",    label:"Ранг 3 — Куб"},
-  ];
-
-  const tc = TAB_COLORS[tab];
-
-  const vx=60,vy=40; // vector world coords
-  const rad=axisAngle*Math.PI/180;
-  const c=Math.cos(rad),s=Math.sin(rad);
-  const compX = Math.round(vx*c + vy*s);
-  const compY = Math.round(-vx*s + vy*c);
 
   return (
     <div style={{minHeight:"100vh",background:"#07090f",color:"#e2e8f0",
       fontFamily:"'JetBrains Mono',monospace",padding:"16px"}}>
 
       {/* Header */}
-      <div style={{textAlign:"center",marginBottom:"20px"}}>
-        <h1 style={{fontSize:"20px",fontWeight:"700",
-          background:"linear-gradient(90deg,#f59e0b,#10b981,#3b82f6,#a855f7)",
-          WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",
-          marginBottom:"6px"}}>
-          Тензоры: от точки до куба
+      <div style={{textAlign:"center",marginBottom:"16px"}}>
+        <h1 style={{fontSize:"18px",fontWeight:"700",
+          background:"linear-gradient(90deg,#f59e0b,#10b981,#3b82f6,#a855f7,#06b6d4,#10b981)",
+          WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",marginBottom:"3px"}}>
+          Тензоры — полное объяснение
         </h1>
-        <p style={{color:"#64748b",fontSize:"12px"}}>
-          Одна аналогия — четыре ранга — одна идея
+        <p style={{color:"#334155",fontSize:"10px"}}>
+          Математика → NumPy → Реальная жизнь
         </p>
       </div>
 
       {/* Tabs */}
-      <div style={{display:"flex",gap:"4px",marginBottom:"20px",flexWrap:"wrap",justifyContent:"center"}}>
-        {tabs.map(t=>{
-          const tc2=TAB_COLORS[t.id];
-          const active=tab===t.id;
+      <div style={{display:"flex",gap:"4px",marginBottom:"16px",flexWrap:"wrap",justifyContent:"center"}}>
+        {TABS.map(t=>{
+          const tc=TC[t.id],active=tab===t.id;
           return (
-            <button key={t.id} className="btn" onClick={()=>{setTab(t.id);setStep(0);}}
-              style={{padding:"7px 12px",borderRadius:"8px",fontSize:"11px",fontWeight:"600",
-                background: active?tc2.base:tc2.dim,
-                color: active?"#07090f":tc2.base,
-                border:`1px solid ${tc2.base}`,
-                transition:"all 0.2s"}}>
+            <button key={t.id} className="btn" onClick={()=>setTab(t.id)}
+              style={{padding:"6px 10px",borderRadius:"8px",fontSize:"10.5px",fontWeight:"600",
+                background:active?tc.base:tc.dim,color:active?"#07090f":tc.base,
+                border:`1px solid ${tc.base}`,transition:"all 0.2s"}}>
               {t.label}
             </button>
           );
         })}
       </div>
 
-      {/* ─── INTRO ─── */}
-      {tab==="intro" && (
-        <div className="anim-up" style={{maxWidth:"480px",margin:"0 auto",display:"flex",flexDirection:"column",gap:"16px"}}>
-          <Card color="#64748b">
-            <p style={{fontFamily:"'Crimson Pro',serif",fontSize:"17px",lineHeight:"1.7",color:"#cbd5e1",fontStyle:"italic"}}>
-              «Тензор — это объект в пространстве. Он существует сам по себе.<br/>
-              Его <strong style={{color:"#fde047",fontStyle:"normal"}}>компоненты</strong> (числа) зависят от наблюдателя.<br/>
-              Но сам объект — нет.»
-            </p>
-          </Card>
+      {/* Content */}
+      {tab==="dict" && <TabDict/>}
+      {tab==="r01"  && <TabR01 axisAngle={axisAngle} spinning={spinning} startSpin={startSpin}/>}
+      {tab==="r2"   && <TabR2/>}
+      {tab==="r3"   && <TabR3/>}
+      {tab==="r4"   && <TabR4/>}
+      {tab==="repr" && <TabRepr/>}
 
-          <div style={{display:"flex",flexDirection:"column",gap:"10px"}}>
-            {[
-              {rank:"0",name:"Скаляр",  indices:"0 индексов",ex:"Температура: 36.6°",   color:"#f59e0b",
-               what:"Одно число. Не зависит от осей координат вообще."},
-              {rank:"1",name:"Вектор",  indices:"1 индекс",  ex:"Сила: [Fx, Fy, Fz]",  color:"#10b981",
-               what:"Список чисел = стрелка в пространстве. Числа меняются при повороте, стрелка — нет."},
-              {rank:"2",name:"Матрица", indices:"2 индекса", ex:"Цена[товар][магазин]", color:"#3b82f6",
-               what:"Таблица чисел. Описывает связь двух направлений сразу."},
-              {rank:"3",name:"Куб",     indices:"3 индекса", ex:"Цена[товар][магазин][валюта]",color:"#a855f7",
-               what:"Стопка матриц. Три оси — три индекса."},
-            ].map(item=>(
-              <div key={item.rank}
-                style={{display:"flex",gap:"12px",alignItems:"flex-start",
-                  background:item.color+"0d",border:`1px solid ${item.color}33`,
-                  borderRadius:"10px",padding:"12px"}}>
-                <Badge n={item.rank} color={item.color}/>
-                <div>
-                  <div style={{display:"flex",gap:"8px",alignItems:"center",marginBottom:"4px"}}>
-                    <span style={{fontWeight:"700",color:item.color}}>{item.name}</span>
-                    <span style={{fontSize:"10px",color:"#64748b",background:"#ffffff0d",
-                      padding:"1px 6px",borderRadius:"4px"}}>{item.indices}</span>
-                  </div>
-                  <div style={{fontSize:"11px",color:"#94a3b8",lineHeight:"1.5"}}>{item.what}</div>
-                  <div style={{fontSize:"10px",color:"#64748b",marginTop:"3px",fontStyle:"italic"}}>{item.ex}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <Card color="#64748b" style={{textAlign:"center"}}>
-            <div style={{fontSize:"12px",color:"#94a3b8",lineHeight:"1.8"}}>
-              <strong style={{color:"#fde047"}}>Главная идея:</strong><br/>
-              Ранг = сколько индексов нужно, чтобы<br/>
-              указать на <em style={{color:"#10b981"}}>одно конкретное число</em> внутри
-            </div>
-          </Card>
-        </div>
-      )}
-
-      {/* ─── RANK 0 ─── */}
-      {tab==="r0" && (
-        <div className="anim-up" style={{maxWidth:"480px",margin:"0 auto",display:"flex",flexDirection:"column",gap:"16px"}}>
-          <Card color="#f59e0b">
-            <div style={{fontSize:"13px",color:"#fbbf24",fontWeight:"700",marginBottom:"8px"}}>
-              🌡 Скаляр = одно число без направления
-            </div>
-            <p style={{fontSize:"12px",color:"#d1d5db",lineHeight:"1.7"}}>
-              Скаляр — это просто <strong style={{color:"#fde047"}}>одно число</strong>.<br/>
-              Неважно, как ты повернёшь оси координат, неважно, в каких единицах измеряешь —
-              это число остаётся тем же самым объектом.
-            </p>
-          </Card>
-
-          {/* Visual: rotating axes, scalar stays fixed */}
-          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"12px"}}>
-            <div style={{fontSize:"11px",color:"#64748b",marginBottom:"-4px"}}>Крути оси — точка не двигается</div>
-            <div style={{position:"relative"}}>
-              <Axes2D angle={axisAngle} showVector={false} size={160}/>
-              {/* fixed scalar dot */}
-              <div className="pulse" style={{position:"absolute",
-                top:"50%",left:"50%",transform:"translate(20px,-30px)",
-                width:"28px",height:"28px",borderRadius:"50%",
-                background:"#f59e0b",display:"flex",alignItems:"center",justifyContent:"center",
-                fontSize:"11px",fontWeight:"700",color:"#07090f",zIndex:10}}>
-                36.6
-              </div>
-            </div>
-            <button className="btn glow" onClick={startSpin}
-              style={{padding:"6px 16px",borderRadius:"8px",fontSize:"12px",fontWeight:"600",
-                background: spinning?"#f59e0b":"#f59e0b22",color:spinning?"#07090f":"#fbbf24",
-                border:"1px solid #f59e0b"}}>
-              {spinning?"⏹ Стоп":"▶ Крутить оси"}
-            </button>
-          </div>
-
-          {/* Analogy */}
-          <div style={{display:"flex",flexDirection:"column",gap:"8px"}}>
-            <div style={{fontSize:"12px",color:"#f59e0b",fontWeight:"700"}}>Аналогия с деньгами:</div>
-            {[
-              {icon:"🍎",text:"У тебя 5 яблок. Всегда 5 — в любой системе счёта."},
-              {icon:"💰",text:"Общая выручка магазина за день = 50 000 руб. Одно число."},
-              {icon:"🌡",text:"Температура тела = 36.6°C. Не зависит от того, стоишь ли ты на севере или юге."},
-            ].map((x,i)=>(
-              <div key={i} style={{display:"flex",gap:"10px",alignItems:"flex-start",
-                background:"#f59e0b0a",borderRadius:"8px",padding:"10px",border:"1px solid #f59e0b22"}}>
-                <span style={{fontSize:"18px"}}>{x.icon}</span>
-                <span style={{fontSize:"12px",color:"#d1d5db",lineHeight:"1.5"}}>{x.text}</span>
-              </div>
-            ))}
-          </div>
-
-          <Card color="#f59e0b">
-            <div style={{fontSize:"12px",color:"#d1d5db",lineHeight:"1.7"}}>
-              <strong style={{color:"#fde047"}}>Почему скаляр — тензор ранга 0?</strong><br/>
-              Потому что при смене базиса (системы координат) он преобразуется<br/>
-              по закону: <Code color="#fbbf24">T' = T</Code><br/>
-              То есть — никак не меняется. Ноль преобразований. Ранг 0.
-            </div>
-          </Card>
-
-          <div style={{background:"#f59e0b0d",border:"1px solid #f59e0b33",borderRadius:"8px",
-            padding:"10px",textAlign:"center"}}>
-            <Code color="#fde047">scalar.shape = ()</Code>
-            <span style={{color:"#64748b",fontSize:"11px"}}> — пустой shape, ноль осей</span>
-          </div>
-        </div>
-      )}
-
-      {/* ─── RANK 1 ─── */}
-      {tab==="r1" && (
-        <div className="anim-up" style={{maxWidth:"520px",margin:"0 auto",display:"flex",flexDirection:"column",gap:"16px"}}>
-          <Card color="#10b981">
-            <div style={{fontSize:"13px",color:"#34d399",fontWeight:"700",marginBottom:"8px"}}>
-              🏹 Вектор = стрелка в пространстве
-            </div>
-            <p style={{fontSize:"12px",color:"#d1d5db",lineHeight:"1.7"}}>
-              Вектор — это <strong style={{color:"#fde047"}}>направление + величина</strong>.<br/>
-              Представь стрелку в комнате. Стрелка реальна — она никуда не двигается.<br/>
-              Но если ты <em style={{color:"#34d399"}}>повернёшь линейку</em>, которой измеряешь,
-              то числа (компоненты) изменятся. Сама стрелка — нет.
-            </p>
-          </Card>
-
-          {/* 2D vector + rotation */}
-          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"8px"}}>
-            <div style={{fontSize:"11px",color:"#64748b",textAlign:"center"}}>
-              Стрелка фиксирована. Крутятся оси измерения.
-            </div>
-            <div style={{display:"flex",gap:"20px",alignItems:"center",flexWrap:"wrap",justifyContent:"center"}}>
-              <Axes2D angle={axisAngle} vectorX={vx} vectorY={vy}
-                showVector={true} showComponents={true} color="#34d399" size={180}/>
-              <div style={{display:"flex",flexDirection:"column",gap:"8px"}}>
-                <div style={{fontSize:"11px",color:"#94a3b8"}}>Угол поворота осей:</div>
-                <div style={{fontSize:"22px",fontWeight:"700",color:"#fde047",textAlign:"center"}}>
-                  {axisAngle}°
-                </div>
-                <div style={{background:"#1f2937",borderRadius:"8px",padding:"10px",
-                  border:"1px solid #374151",fontSize:"12px",minWidth:"140px"}}>
-                  <div style={{color:"#94a3b8",marginBottom:"4px"}}>Компоненты:</div>
-                  <div style={{color:"#f87171"}}>v'ₓ = <strong>{compX}</strong></div>
-                  <div style={{color:"#4ade80"}}>v'ᵧ = <strong>{compY}</strong></div>
-                  <div style={{color:"#64748b",fontSize:"10px",marginTop:"6px"}}>
-                    |v| = {Math.round(Math.sqrt(vx*vx+vy*vy))} ← не меняется!
-                  </div>
-                </div>
-              </div>
-            </div>
-            <button className="btn" onClick={startSpin}
-              style={{padding:"6px 16px",borderRadius:"8px",fontSize:"12px",fontWeight:"600",
-                background: spinning?"#10b981":"#10b98122",color:spinning?"#07090f":"#34d399",
-                border:"1px solid #10b981"}}>
-              {spinning?"⏹ Стоп":"▶ Крутить оси"}
-            </button>
-          </div>
-
-          {/* 3D section */}
-          <Card color="#10b981">
-            <div style={{fontSize:"12px",color:"#34d399",fontWeight:"700",marginBottom:"8px"}}>
-              А что такое вектор в 3D?
-            </div>
-            <div style={{display:"flex",gap:"16px",alignItems:"flex-start",flexWrap:"wrap"}}>
-              <Vector3D vx={50} vy={40} vz={30} color="#34d399" size={175}/>
-              <div style={{fontSize:"12px",color:"#d1d5db",lineHeight:"1.8",flex:1,minWidth:"160px"}}>
-                В 3D стрелке нужно<br/>
-                <strong style={{color:"#fde047"}}>три числа</strong>:<br/>
-                <span style={{color:"#f87171"}}>vₓ</span> — насколько вправо<br/>
-                <span style={{color:"#4ade80"}}>vᵧ</span> — насколько вверх<br/>
-                <span style={{color:"#60a5fa"}}>v_z</span> — насколько вперёд<br/>
-                <br/>
-                <span style={{color:"#64748b",fontSize:"11px"}}>
-                  Повернёшь оси — все три числа изменятся.<br/>
-                  Стрелка останется той же.
-                </span>
-              </div>
-            </div>
-          </Card>
-
-          {/* Money analogy */}
-          <div style={{background:"#10b9810d",border:"1px solid #10b98133",borderRadius:"10px",padding:"12px"}}>
-            <div style={{fontSize:"12px",color:"#34d399",fontWeight:"700",marginBottom:"8px"}}>Аналогия с ценами (вектор):</div>
-            <div style={{display:"flex",gap:"12px",alignItems:"flex-start"}}>
-              <div style={{flex:1}}>
-                <div style={{fontSize:"11px",color:"#94a3b8",marginBottom:"6px"}}>В USD (базис 1):</div>
-                <div style={{background:"#1f2937",borderRadius:"6px",padding:"8px",fontSize:"12px"}}>
-                  <div>Яблоки: <Code color="#fbbf24">10</Code></div>
-                  <div>Кофе:   <Code color="#fbbf24">20</Code></div>
-                </div>
-              </div>
-              <div style={{color:"#8b5cf6",fontSize:"22px",paddingTop:"20px"}}>→</div>
-              <div style={{flex:1}}>
-                <div style={{fontSize:"11px",color:"#94a3b8",marginBottom:"6px"}}>В RUB (базис 2, ×100):</div>
-                <div style={{background:"#1f2937",borderRadius:"6px",padding:"8px",fontSize:"12px"}}>
-                  <div>Яблоки: <Code color="#ef4444">1000</Code></div>
-                  <div>Кофе:   <Code color="#ef4444">2000</Code></div>
-                </div>
-              </div>
-            </div>
-            <div style={{fontSize:"11px",color:"#64748b",marginTop:"8px",lineHeight:"1.6"}}>
-              Числа изменились (10→1000), но товары те же самые.<br/>
-              Вектор цен = <em style={{color:"#34d399"}}>один и тот же объект</em>, два разных представления.
+      {/* Summary strip */}
+      <div style={{maxWidth:"520px",margin:"20px auto 0",background:"#0d1117",border:"1px solid #1e293b",
+        borderRadius:"10px",padding:"9px 12px",display:"flex",gap:"6px",alignItems:"center",flexWrap:"wrap",justifyContent:"center"}}>
+        {[
+          {r:0,n:"Скаляр", s:"()",         c:"#f59e0b",id:"r01"},
+          {r:1,n:"Вектор", s:"(N,)",       c:"#10b981",id:"r01"},
+          {r:2,n:"Матрица",s:"(N,M)",      c:"#3b82f6",id:"r2"},
+          {r:3,n:"Куб",    s:"(N,M,K)",    c:"#a855f7",id:"r3"},
+          {r:4,n:"Батч",   s:"(B,N,M,K)",  c:"#06b6d4",id:"r4"},
+        ].map(x=>(
+          <div key={x.r} style={{display:"flex",gap:"5px",alignItems:"center",cursor:"pointer",
+            opacity:tab===x.id||tab==="dict"?1:0.28,transition:"opacity 0.3s"}}
+            onClick={()=>setTab(x.id)}>
+            <Badge n={x.r} color={x.c}/>
+            <div style={{fontSize:"9px"}}>
+              <div style={{color:x.c,fontWeight:"700"}}>{x.n}</div>
+              <div style={{color:"#334155"}}>{x.s}</div>
             </div>
           </div>
-
-          <div style={{background:"#10b9810d",border:"1px solid #10b98133",borderRadius:"8px",
-            padding:"10px",textAlign:"center"}}>
-            <Code color="#34d399">prices.shape = (2,)</Code>
-            <span style={{color:"#64748b",fontSize:"11px"}}> — один индекс, 2 товара</span>
-          </div>
-        </div>
-      )}
-
-      {/* ─── RANK 2 ─── */}
-      {tab==="r2" && (
-        <div className="anim-up" style={{maxWidth:"520px",margin:"0 auto",display:"flex",flexDirection:"column",gap:"16px"}}>
-          <Card color="#3b82f6">
-            <div style={{fontSize:"13px",color:"#60a5fa",fontWeight:"700",marginBottom:"8px"}}>
-              📋 Тензор 2-го ранга = таблица (матрица)
-            </div>
-            <p style={{fontSize:"12px",color:"#d1d5db",lineHeight:"1.7"}}>
-              Вектор описывал цены <em>одного товара</em> в одной валюте.<br/>
-              Теперь у нас <strong style={{color:"#fde047"}}>два измерения</strong>:<br/>
-              <span style={{color:"#4ade80"}}>товаров несколько</span> + <span style={{color:"#60a5fa"}}>магазинов несколько</span>.<br/>
-              Нужен не список, а <strong style={{color:"#fde047"}}>таблица</strong>.
-            </p>
-          </Card>
-
-          {/* Matrix visualization */}
-          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"10px"}}>
-            <div style={{fontSize:"11px",color:"#64748b"}}>Кликни на ячейку</div>
-            <div style={{overflowX:"auto",width:"100%",display:"flex",justifyContent:"center"}}>
-              <div>
-                <div style={{display:"flex",marginLeft:"70px",marginBottom:"4px",gap:"0px"}}>
-                  {colLabels.map((l,ci)=>(
-                    <div key={ci} style={{width:"62px",textAlign:"center",fontSize:"10px",
-                      color:"#60a5fa",fontWeight:"600"}}>{l}</div>
-                  ))}
-                </div>
-                <div style={{display:"flex",gap:"6px"}}>
-                  <div style={{display:"flex",flexDirection:"column",justifyContent:"space-around",width:"64px"}}>
-                    {rowLabels.map((l,ri)=>(
-                      <div key={ri} style={{height:"36px",display:"flex",alignItems:"center",
-                        justifyContent:"flex-end",paddingRight:"6px",fontSize:"10px",
-                        color:"#4ade80",fontWeight:"600"}}>{l}</div>
-                    ))}
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,62px)",gap:"3px",
-                    border:"2px solid #3b82f644",padding:"4px",borderRadius:"8px",background:"#3b82f60a"}}>
-                    {priceUSD.map((row,ri)=>row.map((val,ci)=>{
-                      const isHl=hlCell&&hlCell[0]===ri&&hlCell[1]===ci;
-                      return (
-                        <button key={`${ri}-${ci}`} className="btn"
-                          onClick={()=>setHlCell(isHl?null:[ri,ci])}
-                          style={{height:"36px",borderRadius:"5px",
-                            background:isHl?"#3b82f666":"#3b82f622",
-                            border:`${isHl?2:1}px solid ${isHl?"#3b82f6":"#3b82f633"}`,
-                            fontSize:"13px",fontWeight:"600",color:"white",
-                            transition:"all 0.2s",cursor:"pointer"}}>
-                          ${val}
-                        </button>
-                      );
-                    }))}
-                  </div>
-                </div>
-              </div>
-            </div>
-            {hlCell && (
-              <div className="anim-r" style={{background:"#1f2937",borderRadius:"8px",padding:"10px",
-                border:"1px solid #3b82f6",fontSize:"12px",textAlign:"center"}}>
-                <Code color="#93c5fd">price_matrix</Code>
-                <Code color="#fde047">[{hlCell[0]}, {hlCell[1]}]</Code>
-                <Code color="#9ca3af"> = </Code>
-                <Code color="#86efac">${priceUSD[hlCell[0]][hlCell[1]]}</Code>
-                <div style={{color:"#64748b",fontSize:"10px",marginTop:"4px"}}>
-                  {rowLabels[hlCell[0]]} в {colLabels[hlCell[1]]}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Transformation */}
-          <div style={{background:"#3b82f60d",border:"1px solid #3b82f633",borderRadius:"10px",padding:"12px"}}>
-            <div style={{fontSize:"12px",color:"#60a5fa",fontWeight:"700",marginBottom:"10px"}}>
-              Смена базиса: USD → RUB (×100)
-            </div>
-            <div style={{display:"flex",gap:"12px",alignItems:"center",flexWrap:"wrap",justifyContent:"center"}}>
-              <div style={{textAlign:"center"}}>
-                <div style={{fontSize:"10px",color:"#94a3b8",marginBottom:"4px"}}>USD</div>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(3,38px)",gap:"2px",
-                  border:"1px solid #f59e0b44",padding:"3px",borderRadius:"6px"}}>
-                  {priceUSD.map((row,ri)=>row.map((v,ci)=>(
-                    <div key={`${ri}-${ci}`} style={{height:"26px",background:"#f59e0b22",borderRadius:"3px",
-                      display:"flex",alignItems:"center",justifyContent:"center",fontSize:"10px",color:"#fbbf24"}}>
-                      ${v}
-                    </div>
-                  )))}
-                </div>
-              </div>
-              <div style={{color:"#8b5cf6",fontSize:"20px"}}>×100</div>
-              <div style={{color:"#8b5cf6",fontSize:"20px"}}>→</div>
-              <div style={{textAlign:"center"}}>
-                <div style={{fontSize:"10px",color:"#94a3b8",marginBottom:"4px"}}>RUB</div>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(3,46px)",gap:"2px",
-                  border:"1px solid #ef444444",padding:"3px",borderRadius:"6px"}}>
-                  {priceRUB.map((row,ri)=>row.map((v,ci)=>(
-                    <div key={`${ri}-${ci}`} style={{height:"26px",background:"#ef444422",borderRadius:"3px",
-                      display:"flex",alignItems:"center",justifyContent:"center",fontSize:"9px",color:"#fca5a5"}}>
-                      ₽{v}
-                    </div>
-                  )))}
-                </div>
-              </div>
-            </div>
-            <div style={{fontSize:"11px",color:"#64748b",marginTop:"10px",lineHeight:"1.6"}}>
-              Все числа умножились на 100. Но смысл таблицы — тот же.<br/>
-              <strong style={{color:"#60a5fa"}}>Та же матрица, другой базис.</strong>
-            </div>
-          </div>
-
-          <Card color="#3b82f6">
-            <div style={{fontSize:"12px",color:"#d1d5db",lineHeight:"1.7"}}>
-              <strong style={{color:"#60a5fa"}}>Нужно ДВА индекса:</strong><br/>
-              <Code color="#4ade80">price[i]</Code> <Code color="#94a3b8">←</Code> <Code color="#fbbf24">какой товар</Code><br/>
-              <Code color="#4ade80">price[i, j]</Code> <Code color="#94a3b8">←</Code> <Code color="#fbbf24">товар i в магазине j</Code><br/><br/>
-              <Code color="#60a5fa">price.shape = (2, 3)</Code>
-              <span style={{color:"#64748b",fontSize:"11px"}}> — 2 товара, 3 магазина</span>
-            </div>
-          </Card>
-        </div>
-      )}
-
-      {/* ─── RANK 3 ─── */}
-      {tab==="r3" && (
-        <div className="anim-up" style={{maxWidth:"520px",margin:"0 auto",display:"flex",flexDirection:"column",gap:"16px"}}>
-          <Card color="#a855f7">
-            <div style={{fontSize:"13px",color:"#c084fc",fontWeight:"700",marginBottom:"8px"}}>
-              🧊 Тензор 3-го ранга = куб (стопка матриц)
-            </div>
-            <p style={{fontSize:"12px",color:"#d1d5db",lineHeight:"1.7"}}>
-              У нас уже есть матрица: <span style={{color:"#4ade80"}}>товары</span> × <span style={{color:"#60a5fa"}}>магазины</span>.<br/>
-              Теперь добавим <strong style={{color:"#fde047"}}>третье измерение: валюта</strong>.<br/>
-              Получается не таблица, а <strong style={{color:"#c084fc"}}>стопка таблиц</strong> — куб.
-            </p>
-          </Card>
-
-          {/* Cube visual */}
-          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:"12px"}}>
-            <div style={{fontSize:"11px",color:"#64748b",textAlign:"center"}}>
-              Каждый слой = отдельная валюта
-            </div>
-            <div style={{display:"flex",gap:"20px",alignItems:"flex-start",flexWrap:"wrap",justifyContent:"center"}}>
-              <Cube3D
-                layers={cubeData}
-                layerColors={cubeColors}
-                layerLabels={["USD: price[0]","RUB: price[1]","EUR: price[2]"]}
-                size={200}/>
-              <div style={{display:"flex",flexDirection:"column",gap:"8px"}}>
-                <div style={{fontSize:"11px",color:"#94a3b8"}}>Выбери слой:</div>
-                {currencies.map((cur,i)=>(
-                  <button key={i} className="btn"
-                    onClick={()=>setCubeLayer(i)}
-                    style={{padding:"6px 12px",borderRadius:"6px",fontSize:"11px",fontWeight:"600",
-                      background:cubeLayer===i?cubeColors[i]:cubeColors[i]+"22",
-                      color:cubeLayer===i?"#07090f":cubeColors[i],
-                      border:`1px solid ${cubeColors[i]}`,transition:"all 0.2s"}}>
-                    {cur} — слой {i}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Selected layer detail */}
-          <div style={{background:cubeColors[cubeLayer]+"0d",border:`1px solid ${cubeColors[cubeLayer]}33`,
-            borderRadius:"10px",padding:"12px"}}>
-            <div style={{fontSize:"12px",color:cubeColors[cubeLayer],fontWeight:"700",marginBottom:"10px"}}>
-              price[{cubeLayer}] — матрица в {currencies[cubeLayer]}:
-            </div>
-            <div style={{display:"flex",justifyContent:"center",overflowX:"auto"}}>
-              <div>
-                <div style={{display:"flex",marginLeft:"70px",marginBottom:"4px"}}>
-                  {colLabels.map((l,ci)=>(
-                    <div key={ci} style={{width:"54px",textAlign:"center",fontSize:"9px",
-                      color:cubeColors[cubeLayer],fontWeight:"600"}}>{l}</div>
-                  ))}
-                </div>
-                <div style={{display:"flex",gap:"4px"}}>
-                  <div style={{display:"flex",flexDirection:"column",justifyContent:"space-around",width:"64px"}}>
-                    {rowLabels.map((l,ri)=>(
-                      <div key={ri} style={{height:"30px",display:"flex",alignItems:"center",
-                        justifyContent:"flex-end",paddingRight:"6px",fontSize:"9px",
-                        color:"#94a3b8",fontWeight:"600"}}>{l}</div>
-                    ))}
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(3,54px)",gap:"2px",
-                    border:`2px solid ${cubeColors[cubeLayer]}44`,padding:"3px",borderRadius:"6px"}}>
-                    {cubeData[cubeLayer].map((row,ri)=>row.map((val,ci)=>(
-                      <div key={`${ri}-${ci}`} style={{height:"30px",background:cubeColors[cubeLayer]+"33",
-                        borderRadius:"4px",display:"flex",alignItems:"center",justifyContent:"center",
-                        fontSize:"11px",fontWeight:"700",color:"white"}}>
-                        {val}
-                      </div>
-                    )))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Index access */}
-          <Card color="#a855f7">
-            <div style={{fontSize:"12px",color:"#d1d5db",lineHeight:"1.8"}}>
-              <strong style={{color:"#c084fc"}}>Нужно ТРИ индекса:</strong><br/>
-              <Code color="#c084fc">price[k]</Code><Code color="#64748b"> → матрица валюты k</Code><br/>
-              <Code color="#c084fc">price[k, i]</Code><Code color="#64748b"> → строка товара i в валюте k</Code><br/>
-              <Code color="#c084fc">price[k, i, j]</Code><Code color="#64748b"> → одно конкретное число</Code><br/>
-              <br/>
-              <Code color="#c084fc">price.shape = (3, 2, 3)</Code><br/>
-              <span style={{color:"#64748b",fontSize:"11px"}}>3 валюты × 2 товара × 3 магазина</span>
-            </div>
-          </Card>
-
-          {/* Connection to images */}
-          <div style={{background:"#a855f70d",border:"1px solid #a855f733",borderRadius:"10px",padding:"12px"}}>
-            <div style={{fontSize:"12px",color:"#c084fc",fontWeight:"700",marginBottom:"8px"}}>
-              🖼 Ты уже знаешь тензор 3-го ранга!
-            </div>
-            <div style={{fontSize:"12px",color:"#d1d5db",lineHeight:"1.7"}}>
-              Изображение = тензор ранга 3:<br/>
-              <Code color="#4ade80">image[строка, столбец, канал]</Code><br/>
-              <br/>
-              <span style={{color:"#64748b"}}>
-                канал 0 = R<br/>
-                канал 1 = G<br/>
-                канал 2 = B<br/>
-              </span>
-              <br/>
-              <Code color="#c084fc">image.shape = (640, 640, 3)</Code><br/>
-              <span style={{color:"#64748b",fontSize:"11px"}}>высота × ширина × 3 канала</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ─── Summary bar ─── */}
-      {tab!=="intro" && (
-        <div style={{maxWidth:"520px",margin:"20px auto 0",
-          background:"#0d1117",border:"1px solid #1e293b",borderRadius:"10px",
-          padding:"10px 14px",display:"flex",gap:"10px",alignItems:"center",flexWrap:"wrap"}}>
-          {[
-            {r:"0",name:"Скаляр", shape:"()",       c:"#f59e0b"},
-            {r:"1",name:"Вектор", shape:"(N,)",      c:"#10b981"},
-            {r:"2",name:"Матрица",shape:"(N, M)",    c:"#3b82f6"},
-            {r:"3",name:"Куб",    shape:"(N, M, K)", c:"#a855f7"},
-          ].map(x=>(
-            <div key={x.r} style={{display:"flex",gap:"6px",alignItems:"center",
-              opacity: (
-                (x.r==="0"&&tab==="r0")||(x.r==="1"&&tab==="r1")||
-                (x.r==="2"&&tab==="r2")||(x.r==="3"&&tab==="r3")
-              ) ? 1 : 0.35, transition:"opacity 0.3s"}}>
-              <Badge n={x.r} color={x.c}/>
-              <div style={{fontSize:"10px"}}>
-                <div style={{color:x.c,fontWeight:"600"}}>{x.name}</div>
-                <div style={{color:"#475569"}}>{x.shape}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+        ))}
+      </div>
     </div>
   );
 }
